@@ -1,0 +1,6 @@
+{
+  "name": "PHS-Finance - Prottasha Housing Society",
+  "description": "Enterprise Financial Management, Director Share Ledger, Member Statements, and EC Governance System for Prottasha Housing Society.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
