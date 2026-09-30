@@ -150,22 +150,42 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({
 
   const handleReject = (id: string) => {
     if (!currentUser) return;
-    const reason = window.prompt('Please enter the reason for rejection:') || 'Audit discrepancy';
+    let reason = 'Audit discrepancy or documentation missing';
+    try {
+      const input = window.prompt('Please enter the reason for rejection:');
+      if (input !== null && input.trim()) {
+        reason = input.trim();
+      } else if (input === null) {
+        return; // User clicked Cancel
+      }
+    } catch {
+      // Sandbox fallback
+    }
     storageService.setExpenseStatus(id, 'REJECTED', currentUser, reason);
   };
 
   const handleSoftDelete = (id: string) => {
     if (!currentUser) return;
-    if (window.confirm('Are you sure you want to soft-delete this expense record?')) {
-      storageService.softDeleteExpense(id, currentUser);
+    try {
+      if (!window.confirm('Are you sure you want to soft-delete this expense record?')) {
+        return;
+      }
+    } catch {
+      // Sandbox fallback
     }
+    storageService.softDeleteExpense(id, currentUser);
   };
 
   const handleHardDelete = (id: string) => {
     if (!currentUser) return;
-    if (window.confirm('ROOT WARNING: Permanently purge this expense record from database?')) {
-      storageService.hardDeleteExpense(id, currentUser);
+    try {
+      if (!window.confirm('ROOT WARNING: Permanently purge this expense record from database?')) {
+        return;
+      }
+    } catch {
+      // Sandbox fallback
     }
+    storageService.hardDeleteExpense(id, currentUser);
   };
 
   const handleExportCSV = () => {

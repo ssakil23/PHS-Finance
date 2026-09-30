@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Wallet,
@@ -50,6 +50,12 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
   const [selectedMemberId, setSelectedMemberId] = useState<string>(
     isMember ? loggedMemberId : initialMemberId || 'PHSM-001'
   );
+
+  useEffect(() => {
+    if (!isMember && initialMemberId) {
+      setSelectedMemberId(initialMemberId);
+    }
+  }, [initialMemberId, isMember]);
 
   const activeId = isMember ? loggedMemberId : selectedMemberId;
   const currentMember = members.find((m) => m.id === activeId) || members[0];

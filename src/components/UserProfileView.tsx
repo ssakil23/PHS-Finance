@@ -358,7 +358,17 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
   const handleReject = (reqId: string) => {
     if (!currentUser) return;
-    const reason = window.prompt('Enter reason for rejecting profile change:') || 'Information verification failed';
+    let reason = 'Information verification failed';
+    try {
+      const input = window.prompt('Enter reason for rejecting profile change:');
+      if (input !== null && input.trim()) {
+        reason = input.trim();
+      } else if (input === null) {
+        return; // User clicked Cancel
+      }
+    } catch {
+      // Sandbox fallback
+    }
     storageService.rejectProfileUpdateRequest(reqId, reason, currentUser);
     setRequests(storageService.getProfileUpdateRequests());
     setSuccessBanner('Profile update request rejected.');

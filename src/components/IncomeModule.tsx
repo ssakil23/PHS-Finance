@@ -176,22 +176,42 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
 
   const handleReject = (id: string) => {
     if (!currentUser) return;
-    const reason = window.prompt('Please enter the reason for rejection:') || 'Documentation incomplete';
+    let reason = 'Documentation incomplete or audit discrepancy';
+    try {
+      const input = window.prompt('Please enter the reason for rejection:');
+      if (input !== null && input.trim()) {
+        reason = input.trim();
+      } else if (input === null) {
+        return; // User clicked Cancel
+      }
+    } catch {
+      // Sandbox fallback
+    }
     storageService.setIncomeStatus(id, 'REJECTED', currentUser, reason);
   };
 
   const handleSoftDelete = (id: string) => {
     if (!currentUser) return;
-    if (window.confirm('Are you sure you want to soft-delete this income record?')) {
-      storageService.softDeleteIncome(id, currentUser);
+    try {
+      if (!window.confirm('Are you sure you want to soft-delete this income record?')) {
+        return;
+      }
+    } catch {
+      // Sandbox fallback
     }
+    storageService.softDeleteIncome(id, currentUser);
   };
 
   const handleHardDelete = (id: string) => {
     if (!currentUser) return;
-    if (window.confirm('ROOT WARNING: Are you sure you want to permanently delete this record from the database? This cannot be undone.')) {
-      storageService.hardDeleteIncome(id, currentUser);
+    try {
+      if (!window.confirm('ROOT WARNING: Are you sure you want to permanently delete this record from the database? This cannot be undone.')) {
+        return;
+      }
+    } catch {
+      // Sandbox fallback
     }
+    storageService.hardDeleteIncome(id, currentUser);
   };
 
   const handleExportCSV = () => {

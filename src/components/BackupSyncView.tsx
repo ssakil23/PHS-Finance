@@ -26,6 +26,7 @@ export const BackupSyncView: React.FC<BackupSyncViewProps> = ({ currentUser }) =
   const [syncError, setSyncError] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [restoreMessage, setRestoreMessage] = useState<string>('');
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
 
   const isSystemAdmin = currentUser?.role === 'SYSTEM_ADMIN';
   const lastSync = storageService.getLastSyncTime();
@@ -101,14 +102,14 @@ export const BackupSyncView: React.FC<BackupSyncViewProps> = ({ currentUser }) =
 
   const handleResetFactory = () => {
     if (!currentUser || !isSystemAdmin) return;
-    if (
-      window.confirm(
-        'WARNING: You are about to reset the entire database to factory defaults. All custom transactions will be replaced with initial seed data. Proceed?'
-      )
-    ) {
-      storageService.resetToFactoryDefaults(currentUser);
-      window.location.reload();
-    }
+    setShowResetConfirmModal(true);
+  };
+
+  const handleConfirmFactoryReset = () => {
+    if (!currentUser || !isSystemAdmin) return;
+    storageService.resetToFactoryDefaults(currentUser);
+    setShowResetConfirmModal(false);
+    window.location.reload();
   };
 
   return (
@@ -302,6 +303,42 @@ export const BackupSyncView: React.FC<BackupSyncViewProps> = ({ currentUser }) =
           >
             Reset Database to Factory Defaults
           </button>
+        </div>
+      )}
+
+      {/* Factory Reset Modal Confirmation */}
+      {showResetConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="max-w-md w-full bg-slate-900 border border-rose-700 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-full bg-rose-500/10 text-rose-400">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Reset Database</h3>
+                <p className="text-xs text-rose-400">Irreversible System Action</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              WARNING: You are about to reset the entire database to factory defaults. All custom transactions, uploads, and changes will be replaced with initial seed data. Do you wish to proceed?
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirmModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmFactoryReset}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow transition"
+              >
+                Confirm Factory Reset
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

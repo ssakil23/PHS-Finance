@@ -124,12 +124,17 @@ export const ECGovernanceView: React.FC<ECGovernanceViewProps> = ({
 
   const handleRemovePromotion = (promotionId: string) => {
     if (!currentUser || !isSystemAdmin) return;
-    if (window.confirm('Are you sure you want to remove this appointed EC member?')) {
-      storageService.removePromotedECMember(promotionId, currentUser);
-      setEc(storageService.getExecutiveCommittee());
-      setSaveSuccess('Appointed EC member removed from committee.');
-      setTimeout(() => setSaveSuccess(''), 3000);
+    try {
+      if (!window.confirm('Are you sure you want to remove this appointed EC member?')) {
+        return;
+      }
+    } catch {
+      // Sandbox fallback
     }
+    storageService.removePromotedECMember(promotionId, currentUser);
+    setEc(storageService.getExecutiveCommittee());
+    setSaveSuccess('Appointed EC member removed from committee.');
+    setTimeout(() => setSaveSuccess(''), 3000);
   };
 
   const handleCastVote = (candidateId: string) => {

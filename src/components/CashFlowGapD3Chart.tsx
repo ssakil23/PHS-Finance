@@ -41,6 +41,18 @@ export const CashFlowGapD3Chart: React.FC<CashFlowGapD3ChartProps> = ({
 
   const [timeHorizon, setTimeHorizon] = useState<6 | 12>(6);
   const [collectionPace, setCollectionPace] = useState<'CONSERVATIVE' | 'MODERATE' | 'OPTIMISTIC'>('MODERATE');
+  const [chartWidth, setChartWidth] = useState<number>(800);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (svgRef.current?.parentElement) {
+        setChartWidth(svgRef.current.parentElement.clientWidth);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Compute total outstanding member dues from active ledger
   const memberSummaries = useMemo(() => {
@@ -406,7 +418,7 @@ export const CashFlowGapD3Chart: React.FC<CashFlowGapD3ChartProps> = ({
         .text(isDeficit ? 'GAP!' : 'OK');
     });
 
-  }, [monthlyData]);
+  }, [monthlyData, chartWidth]);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
