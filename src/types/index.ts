@@ -23,6 +23,14 @@ export interface ProfileUpdateRequest {
   proposedPhone: string;
   proposedEmail: string;
   proposedAddress: string;
+  proposedNidOrBirthId?: string;
+  proposedDob?: string;
+  proposedEducation?: string;
+  proposedPermanentAddress?: string;
+  proposedCurrentAddress?: string;
+  proposedSpouseName?: string;
+  proposedSpouseMobile?: string;
+  proposedEmergencyContact?: string;
   requestedAt: string;
   requestedBy: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -46,11 +54,30 @@ export interface Member {
   ecDesignation?: string;
   officialDesignation?: string;
   isEmpoweredForEntry?: boolean;
+  
+  // Member demographic & contact fields
+  nidOrBirthId?: string;
+  dob?: string; // YYYY-MM-DD
+  education?: string;
+  permanentAddress?: string;
+  currentAddress?: string;
+  spouseName?: string;
+  spouseMobile?: string;
+  emergencyContact?: string;
+
   pendingUpdate?: {
     name: string;
     phone: string;
     email: string;
     address: string;
+    nidOrBirthId?: string;
+    dob?: string;
+    education?: string;
+    permanentAddress?: string;
+    currentAddress?: string;
+    spouseName?: string;
+    spouseMobile?: string;
+    emergencyContact?: string;
     requestedAt: string;
   };
 }
@@ -199,10 +226,102 @@ export interface AuditLog {
     | 'HONORARIUM_UPDATE'
     | 'MEMBER_UPDATE'
     | 'LOGIN';
-  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT';
+  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY';
   entityId: string;
   details: string;
   ipAddress?: string;
+}
+
+export type DocumentCategory = 
+  | 'Executive Committee Notice'
+  | 'Site & Land Development'
+  | 'Legal & Deed Porcha'
+  | 'Financial & Audit Report'
+  | 'Engineering & Layout Map'
+  | 'Member Circular & Guidelines';
+
+export interface SocietyDocument {
+  id: string; // e.g. 'DOC-2026-001'
+  title: string;
+  category: DocumentCategory;
+  description: string;
+  fileName: string;
+  fileType: 'PDF' | 'DOCX' | 'XLSX' | 'JPG' | 'PNG' | 'ZIP';
+  fileSize: string;
+  fileDataUrl?: string; // base64 or SVG or downloadable text/data
+  uploadedBy: string; // Name
+  uploadedByRole: UserRole | string;
+  uploadedByDesignation?: string;
+  uploadedAt: string;
+  isPinned?: boolean;
+  downloadCount: number;
+}
+
+export type QueryCategory = 
+  | 'Finance & Deposit Query'
+  | 'Site & Land Development'
+  | 'Share Transfer & Ownership'
+  | 'Utility & Infrastructure'
+  | 'General Inquiry';
+
+export interface QueryResponse {
+  id: string;
+  responderName: string;
+  responderRole: string;
+  responderDesignation?: string;
+  message: string;
+  respondedAt: string;
+  attachmentName?: string;
+}
+
+export interface MemberQuery {
+  id: string; // e.g. 'QRY-2026-001'
+  memberId: string;
+  shareNumber?: number;
+  submitterName: string;
+  submitterPhone?: string;
+  category: QueryCategory;
+  subject: string;
+  details: string;
+  referenceId?: string; // e.g. 'DEP-2026-001' or 'Plot-14'
+  attachmentUrl?: string;
+  attachmentName?: string;
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED';
+  submittedAt: string;
+  assignedTo?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionRemarks?: string;
+  responses: QueryResponse[];
+}
+
+export interface DiscussionPost {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: UserRole;
+  senderMemberId?: string;
+  senderDesignation?: string;
+  message: string;
+  category: 
+    | 'PROJECT_PROGRESS' 
+    | 'INFO_SHARING' 
+    | 'PICTURE_SHARING' 
+    | 'GENERAL';
+  timestamp: string;
+  imageUrl?: string;
+  imageCaption?: string;
+  likesCount: number;
+  likedBy: string[]; // user IDs
+  comments: {
+    id: string;
+    userName: string;
+    userRole: string;
+    message: string;
+    timestamp: string;
+  }[];
+  isRemovedByModerator?: boolean;
+  moderatedBy?: string;
 }
 
 export interface ChatMessage {

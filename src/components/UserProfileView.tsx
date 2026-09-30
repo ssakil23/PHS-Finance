@@ -25,6 +25,15 @@ import {
   Trash2,
   KeyRound,
   Lock,
+  Download,
+  Eye,
+  GraduationCap,
+  Calendar,
+  CreditCard,
+  Users,
+  Heart,
+  PhoneCall,
+  ExternalLink,
 } from 'lucide-react';
 import { User, Member, ProfileUpdateRequest, OfficialUser } from '../types';
 import { storageService } from '../services/storageService';
@@ -41,6 +50,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [officials, setOfficials] = useState<OfficialUser[]>(storageService.getOfficials());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorFilter, setSelectedDirectorFilter] = useState('ALL');
+
+  // Dossier Card Modal State (Detailed View of 16 Member Attributes)
+  const [selectedDossierMember, setSelectedDossierMember] = useState<Member | null>(null);
 
   // Password Reset State (System Admin & Delegated Admin)
   const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -70,6 +82,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [editPhone, setEditPhone] = useState(currentUser?.phone || '');
   const [editEmail, setEditEmail] = useState(currentUser?.email || '');
   const [editAddress, setEditAddress] = useState('');
+  const [editNid, setEditNid] = useState('');
+  const [editDob, setEditDob] = useState('');
+  const [editEducation, setEditEducation] = useState('');
+  const [editPermAddress, setEditPermAddress] = useState('');
+  const [editCurrAddress, setEditCurrAddress] = useState('');
+  const [editSpouseName, setEditSpouseName] = useState('');
+  const [editSpouseMobile, setEditSpouseMobile] = useState('');
+  const [editEmergencyContact, setEditEmergencyContact] = useState('');
 
   // Admin Direct Edit Member Modal
   const [directEditMember, setDirectEditMember] = useState<Member | null>(null);
@@ -77,6 +97,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [adminPhone, setAdminPhone] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminAddress, setAdminAddress] = useState('');
+  const [adminNid, setAdminNid] = useState('');
+  const [adminDob, setAdminDob] = useState('');
+  const [adminEducation, setAdminEducation] = useState('');
+  const [adminPermAddress, setAdminPermAddress] = useState('');
+  const [adminCurrAddress, setAdminCurrAddress] = useState('');
+  const [adminSpouseName, setAdminSpouseName] = useState('');
+  const [adminSpouseMobile, setAdminSpouseMobile] = useState('');
+  const [adminEmergencyContact, setAdminEmergencyContact] = useState('');
   const [adminStatus, setAdminStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
 
   // Modify & Approve Modal
@@ -85,6 +113,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [modPhone, setModPhone] = useState('');
   const [modEmail, setModEmail] = useState('');
   const [modAddress, setModAddress] = useState('');
+  const [modNid, setModNid] = useState('');
+  const [modDob, setModDob] = useState('');
+  const [modEducation, setModEducation] = useState('');
+  const [modPermAddress, setModPermAddress] = useState('');
+  const [modCurrAddress, setModCurrAddress] = useState('');
+  const [modSpouseName, setModSpouseName] = useState('');
+  const [modSpouseMobile, setModSpouseMobile] = useState('');
+  const [modEmergencyContact, setModEmergencyContact] = useState('');
 
   // Notification banners
   const [successBanner, setSuccessBanner] = useState('');
@@ -102,7 +138,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     setEditName(currentUser?.name || myMemberRecord?.name || '');
     setEditPhone(currentUser?.phone || myMemberRecord?.phone || '');
     setEditEmail(currentUser?.email || myMemberRecord?.email || '');
-    setEditAddress(myMemberRecord?.address || 'Plot #, Sector 14, Uttara, Dhaka');
+    setEditAddress(myMemberRecord?.currentAddress || myMemberRecord?.address || 'Plot #, Sector 14, Uttara, Dhaka');
+    setEditCurrAddress(myMemberRecord?.currentAddress || myMemberRecord?.address || 'Plot #, Sector 14, Uttara, Dhaka');
+    setEditPermAddress(myMemberRecord?.permanentAddress || '');
+    setEditNid(myMemberRecord?.nidOrBirthId || '');
+    setEditDob(myMemberRecord?.dob || '');
+    setEditEducation(myMemberRecord?.education || '');
+    setEditSpouseName(myMemberRecord?.spouseName || '');
+    setEditSpouseMobile(myMemberRecord?.spouseMobile || '');
+    setEditEmergencyContact(myMemberRecord?.emergencyContact || '');
     setIsEditingMyProfile(true);
   };
 
@@ -121,7 +165,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             name: editName,
             phone: editPhone,
             email: editEmail,
-            address: editAddress,
+            address: editCurrAddress || editAddress,
+            currentAddress: editCurrAddress || editAddress,
+            permanentAddress: editPermAddress,
+            nidOrBirthId: editNid,
+            dob: editDob,
+            education: editEducation,
+            spouseName: editSpouseName,
+            spouseMobile: editSpouseMobile,
+            emergencyContact: editEmergencyContact,
           },
           currentUser
         );
@@ -138,7 +190,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
           name: editName,
           phone: editPhone,
           email: editEmail,
-          address: editAddress,
+          address: editCurrAddress || editAddress,
+          currentAddress: editCurrAddress || editAddress,
+          permanentAddress: editPermAddress,
+          nidOrBirthId: editNid,
+          dob: editDob,
+          education: editEducation,
+          spouseName: editSpouseName,
+          spouseMobile: editSpouseMobile,
+          emergencyContact: editEmergencyContact,
         },
         currentUser
       );
@@ -152,11 +212,19 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   // Admin Direct Edit Handler
   const handleOpenDirectEdit = (member: Member) => {
     setDirectEditMember(member);
-    setAdminName(member.name);
-    setAdminPhone(member.phone);
-    setAdminEmail(member.email);
-    setAdminAddress(member.address);
-    setAdminStatus(member.status);
+    setAdminName(member.name || '');
+    setAdminPhone(member.phone || '');
+    setAdminEmail(member.email || '');
+    setAdminAddress(member.currentAddress || member.address || '');
+    setAdminCurrAddress(member.currentAddress || member.address || '');
+    setAdminPermAddress(member.permanentAddress || '');
+    setAdminNid(member.nidOrBirthId || '');
+    setAdminDob(member.dob || '');
+    setAdminEducation(member.education || '');
+    setAdminSpouseName(member.spouseName || '');
+    setAdminSpouseMobile(member.spouseMobile || '');
+    setAdminEmergencyContact(member.emergencyContact || '');
+    setAdminStatus(member.status || 'ACTIVE');
   };
 
   const handleSaveDirectEdit = (e: React.FormEvent) => {
@@ -169,7 +237,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         name: adminName,
         phone: adminPhone,
         email: adminEmail,
-        address: adminAddress,
+        address: adminCurrAddress || adminAddress,
+        currentAddress: adminCurrAddress || adminAddress,
+        permanentAddress: adminPermAddress,
+        nidOrBirthId: adminNid,
+        dob: adminDob,
+        education: adminEducation,
+        spouseName: adminSpouseName,
+        spouseMobile: adminSpouseMobile,
+        emergencyContact: adminEmergencyContact,
         status: adminStatus,
       },
       currentUser
@@ -183,10 +259,18 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   // Open Modify & Approve Modal
   const handleOpenModifyAndApprove = (req: ProfileUpdateRequest) => {
     setModifyingRequest(req);
-    setModName(req.proposedName);
-    setModPhone(req.proposedPhone);
-    setModEmail(req.proposedEmail);
-    setModAddress(req.proposedAddress);
+    setModName(req.proposedName || '');
+    setModPhone(req.proposedPhone || '');
+    setModEmail(req.proposedEmail || '');
+    setModAddress(req.proposedAddress || '');
+    setModCurrAddress(req.proposedCurrentAddress || req.proposedAddress || '');
+    setModPermAddress(req.proposedPermanentAddress || '');
+    setModNid(req.proposedNidOrBirthId || '');
+    setModDob(req.proposedDob || '');
+    setModEducation(req.proposedEducation || '');
+    setModSpouseName(req.proposedSpouseName || '');
+    setModSpouseMobile(req.proposedSpouseMobile || '');
+    setModEmergencyContact(req.proposedEmergencyContact || '');
   };
 
   const handleCommitApprovalWithModifications = (e: React.FormEvent) => {
@@ -200,7 +284,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         name: modName,
         phone: modPhone,
         email: modEmail,
-        address: modAddress,
+        address: modCurrAddress || modAddress,
+        currentAddress: modCurrAddress || modAddress,
+        permanentAddress: modPermAddress,
+        nidOrBirthId: modNid,
+        dob: modDob,
+        education: modEducation,
+        spouseName: modSpouseName,
+        spouseMobile: modSpouseMobile,
+        emergencyContact: modEmergencyContact,
       }
     );
 
@@ -208,6 +300,52 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     setModifyingRequest(null);
     setSuccessBanner(`Approved and applied profile changes for Member ${modifyingRequest.memberId}.`);
     setTimeout(() => setSuccessBanner(''), 4000);
+  };
+
+  // Export Member Directory CSV (All 16 columns)
+  const handleExportDirectoryCSV = () => {
+    const headers = [
+      'Member Id',
+      'Share#',
+      'Full Name',
+      'Controlling Director',
+      'Phone',
+      'Email',
+      'NID/Birth ID',
+      'DoB',
+      'Education',
+      'Permanent Address',
+      'Current Address',
+      'Spouse Name',
+      'Spouse Mobile',
+      'Emergency Contact',
+      'Status',
+    ];
+    const rows = filteredMembers.map((m) => [
+      `"${m.id}"`,
+      `"${m.shareNumber}"`,
+      `"${(m.name || '').replace(/"/g, '""')}"`,
+      `"${(m.controllingDirectorName || '').replace(/"/g, '""')}"`,
+      `"${m.phone || ''}"`,
+      `"${m.email || ''}"`,
+      `"${m.nidOrBirthId || ''}"`,
+      `"${m.dob || ''}"`,
+      `"${(m.education || '').replace(/"/g, '""')}"`,
+      `"${(m.permanentAddress || '').replace(/"/g, '""')}"`,
+      `"${(m.currentAddress || m.address || '').replace(/"/g, '""')}"`,
+      `"${(m.spouseName || '').replace(/"/g, '""')}"`,
+      `"${m.spouseMobile || ''}"`,
+      `"${(m.emergencyContact || '').replace(/"/g, '""')}"`,
+      `"${m.status}"`,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `PHS_Member_Directory_144_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleQuickApprove = (reqId: string) => {
@@ -339,18 +477,45 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
   const pendingRequests = requests.filter((r) => r.status === 'PENDING');
 
-  // Filter members list for directory
+  // Filter members list for directory across all 16 fields
   const filteredMembers = members.filter((m) => {
     if (selectedDirectorFilter !== 'ALL' && m.controllingDirectorName !== selectedDirectorFilter) {
       return false;
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = m.name.toLowerCase().includes(q);
-      const matchId = m.id.toLowerCase().includes(q);
-      const matchPhone = m.phone.toLowerCase().includes(q);
-      const matchEmail = m.email.toLowerCase().includes(q);
-      return matchName || matchId || matchPhone || matchEmail;
+      const matchName = (m.name || '').toLowerCase().includes(q);
+      const matchId = (m.id || '').toLowerCase().includes(q);
+      const matchShare = String(m.shareNumber || '').includes(q);
+      const matchPhone = (m.phone || '').toLowerCase().includes(q);
+      const matchEmail = (m.email || '').toLowerCase().includes(q);
+      const matchNid = (m.nidOrBirthId || '').toLowerCase().includes(q);
+      const matchDob = (m.dob || '').toLowerCase().includes(q);
+      const matchEdu = (m.education || '').toLowerCase().includes(q);
+      const matchPerm = (m.permanentAddress || '').toLowerCase().includes(q);
+      const matchCurr = (m.currentAddress || m.address || '').toLowerCase().includes(q);
+      const matchSpouse = (m.spouseName || '').toLowerCase().includes(q);
+      const matchSpouseMob = (m.spouseMobile || '').toLowerCase().includes(q);
+      const matchEmerg = (m.emergencyContact || '').toLowerCase().includes(q);
+      const matchDirector = (m.controllingDirectorName || '').toLowerCase().includes(q);
+      const matchStatus = (m.status || '').toLowerCase().includes(q);
+      return (
+        matchName ||
+        matchId ||
+        matchShare ||
+        matchPhone ||
+        matchEmail ||
+        matchNid ||
+        matchDob ||
+        matchEdu ||
+        matchPerm ||
+        matchCurr ||
+        matchSpouse ||
+        matchSpouseMob ||
+        matchEmerg ||
+        matchDirector ||
+        matchStatus
+      );
     }
     return true;
   });
@@ -376,7 +541,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               <span>User Profiles & Member Registry</span>
             </h2>
             <p className="text-xs text-slate-300 mt-1">
-              Manage personal credentials, request updates, and allow System Admin & Delegated Admin to Edit, Modify & Approve changes.
+              Manage personal credentials, request updates, view 144 Member Directory, and allow System Admin & Delegated Admin to Edit, Modify & Approve changes.
             </p>
           </div>
 
@@ -394,35 +559,36 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             </button>
 
             {canApproveAndModify && (
-              <>
-                <button
-                  onClick={() => setActiveSubTab('APPROVAL_QUEUE')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                    activeSubTab === 'APPROVAL_QUEUE'
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>Approval Queue</span>
-                  {pendingRequests.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-slate-950 font-bold">
-                      {pendingRequests.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setActiveSubTab('DIRECTORY')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeSubTab === 'DIRECTORY'
-                      ? 'bg-emerald-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Member Directory (144)
-                </button>
-              </>
+              <button
+                onClick={() => setActiveSubTab('APPROVAL_QUEUE')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  activeSubTab === 'APPROVAL_QUEUE'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>Approval Queue</span>
+                {pendingRequests.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-slate-950 font-bold">
+                    {pendingRequests.length}
+                  </span>
+                )}
+              </button>
             )}
+
+            <button
+              onClick={() => setActiveSubTab('DIRECTORY')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                activeSubTab === 'DIRECTORY'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Member Directory</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900 text-emerald-400 border border-slate-700 font-mono font-bold">
+                144
+              </span>
+            </button>
 
             {canApproveAndModify && (
               <button
@@ -485,15 +651,22 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
               {currentUser?.memberId && (
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
-                  <span className="text-slate-400">Shareholder ID:</span>
+                  <span className="text-slate-400">Member ID:</span>
                   <span className="font-mono font-bold text-emerald-400">{currentUser.memberId}</span>
                 </div>
               )}
 
               {currentUser?.shareNumber && (
                 <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
-                  <span className="text-slate-400">Share Allocation:</span>
+                  <span className="text-slate-400">Share#:</span>
                   <span className="font-mono text-slate-200">Share #{currentUser.shareNumber} of 144</span>
+                </div>
+              )}
+
+              {myMemberRecord?.controllingDirectorName && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                  <span className="text-slate-400">Controlling Director:</span>
+                  <span className="font-medium text-emerald-400">{myMemberRecord.controllingDirectorName}</span>
                 </div>
               )}
 
@@ -506,19 +679,56 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
               <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
                 <span className="text-slate-400">Phone:</span>
-                <span className="text-slate-200">{currentUser?.phone || myMemberRecord?.phone || 'N/A'}</span>
+                <span className="font-mono text-slate-200">{currentUser?.phone || myMemberRecord?.phone || 'N/A'}</span>
               </div>
 
               <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
                 <span className="text-slate-400">Email:</span>
-                <span className="text-slate-200">{currentUser?.email || myMemberRecord?.email || 'N/A'}</span>
+                <span className="font-mono text-slate-200">{currentUser?.email || myMemberRecord?.email || 'N/A'}</span>
               </div>
 
-              <div className="flex justify-between items-start py-1">
-                <span className="text-slate-400">Address / Plot:</span>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">NID / Birth ID:</span>
+                <span className="font-mono text-slate-200">{myMemberRecord?.nidOrBirthId || 'N/A'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Date of Birth (DoB):</span>
+                <span className="font-mono text-slate-200">{myMemberRecord?.dob || 'N/A'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Education:</span>
+                <span className="text-slate-200 text-right max-w-[60%] truncate" title={myMemberRecord?.education}>{myMemberRecord?.education || 'N/A'}</span>
+              </div>
+
+              <div className="flex justify-between items-start py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Permanent Address:</span>
                 <span className="text-slate-300 text-right max-w-[60%]">
-                  {myMemberRecord?.address || 'Sector 14, Uttara Model Town, Dhaka'}
+                  {myMemberRecord?.permanentAddress || 'N/A'}
                 </span>
+              </div>
+
+              <div className="flex justify-between items-start py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Current Address:</span>
+                <span className="text-slate-300 text-right max-w-[60%]">
+                  {myMemberRecord?.currentAddress || myMemberRecord?.address || 'Sector 14, Uttara Model Town, Dhaka'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Spouse Name:</span>
+                <span className="text-slate-200">{myMemberRecord?.spouseName || 'N/A'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Spouse Mobile:</span>
+                <span className="font-mono text-slate-200">{myMemberRecord?.spouseMobile || 'N/A'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400">Emergency Contact:</span>
+                <span className="font-mono text-amber-300 text-right max-w-[60%] truncate" title={myMemberRecord?.emergencyContact}>{myMemberRecord?.emergencyContact || 'N/A'}</span>
               </div>
             </div>
 
@@ -545,7 +755,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 <p className="text-[11px] text-amber-300/80 leading-relaxed">
                   You submitted changes to your profile. The System Admin or Delegated Admin can edit, modify, and approve these changes before committing them to the official society ledger.
                 </p>
-                <div className="grid grid-cols-2 gap-3 bg-slate-950/60 p-3 rounded-xl border border-amber-900/50 text-[11px]">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-amber-900/50 text-[11px]">
                   <div>
                     <span className="text-slate-400">Proposed Name:</span>
                     <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.name}</div>
@@ -559,8 +769,32 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.email}</div>
                   </div>
                   <div>
-                    <span className="text-slate-400">Proposed Address:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.address}</div>
+                    <span className="text-slate-400">Proposed NID/Birth ID:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.nidOrBirthId || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Proposed DoB:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.dob || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Proposed Education:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.education || 'N/A'}</div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-400">Proposed Current Address:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.currentAddress || myMemberRecord.pendingUpdate.address}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Proposed Permanent Address:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.permanentAddress || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Proposed Spouse:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.spouseName || 'N/A'} ({myMemberRecord.pendingUpdate.spouseMobile || 'N/A'})</div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-400">Proposed Emergency Contact:</span>
+                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.emergencyContact || 'N/A'}</div>
                   </div>
                 </div>
               </div>
@@ -620,15 +854,98 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                   </div>
 
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Residential / Plot Address</label>
+                    <label className="block text-[11px] text-slate-400 mb-1">NID / Birth Registration ID</label>
                     <input
                       type="text"
-                      required
-                      value={editAddress}
-                      onChange={(e) => setEditAddress(e.target.value)}
+                      value={editNid}
+                      onChange={(e) => setEditNid(e.target.value)}
+                      placeholder="e.g. 19852692500000001"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Date of Birth (DoB)</label>
+                    <input
+                      type="date"
+                      value={editDob}
+                      onChange={(e) => setEditDob(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Educational Qualification</label>
+                    <input
+                      type="text"
+                      value={editEducation}
+                      onChange={(e) => setEditEducation(e.target.value)}
+                      placeholder="e.g. B.Sc. in Civil Engineering (BUET)"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Permanent Address</label>
+                    <input
+                      type="text"
+                      value={editPermAddress}
+                      onChange={(e) => setEditPermAddress(e.target.value)}
+                      placeholder="Village, PO, Upazila/Dist"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Current Address (Plot / Residence)</label>
+                    <input
+                      type="text"
+                      required
+                      value={editCurrAddress}
+                      onChange={(e) => setEditCurrAddress(e.target.value)}
+                      placeholder="House, Road, Sector, Uttara, Dhaka"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Spouse Full Name</label>
+                    <input
+                      type="text"
+                      value={editSpouseName}
+                      onChange={(e) => setEditSpouseName(e.target.value)}
+                      placeholder="Spouse Name"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Spouse Mobile</label>
+                    <input
+                      type="text"
+                      value={editSpouseMobile}
+                      onChange={(e) => setEditSpouseMobile(e.target.value)}
+                      placeholder="+88017..."
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Emergency Contact (Phone & Relationship)</label>
+                  <input
+                    type="text"
+                    value={editEmergencyContact}
+                    onChange={(e) => setEditEmergencyContact(e.target.value)}
+                    placeholder="+88018... (Brother / Relative)"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
 
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400">
@@ -807,117 +1124,260 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         </div>
       )}
 
-      {/* -------------------- TAB 3: MEMBER DIRECTORY & DIRECT EDIT (Admin Only) -------------------- */}
-      {activeSubTab === 'DIRECTORY' && canApproveAndModify && (
+      {/* -------------------- TAB 3: MEMBER DIRECTORY (144 Shares) -------------------- */}
+      {activeSubTab === 'DIRECTORY' && (
         <div className="space-y-4">
-          {/* Search & Director Filter */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs text-slate-400">Filter Director:</span>
-              <select
-                value={selectedDirectorFilter}
-                onChange={(e) => setSelectedDirectorFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-              >
-                <option value="ALL">All 144 Shares / Directors</option>
-                <option value="SAIF AHMED SAKIL">Saif Ahmed Sakil (1–20)</option>
-                <option value="M MASUD SAWDAGOR">M Masud Sawdagor (21–48)</option>
-                <option value="M OMAR FARUQUE MOLLA">M Omar Faruque Molla (49–55)</option>
-                <option value="SHAHIN AHMED">Shahin Ahmed (56–70)</option>
-                <option value="ABUL HASHIM">Abul Hashim (71–87)</option>
-                <option value="SIRAJUL ISLAM">Sirajul Islam (88–94)</option>
-                <option value="M ABU YOUSUF">M Abu Yousuf (95–101)</option>
-                <option value="FAIZAN AHMED">Faizan Ahmed (102–108)</option>
-                <option value="4th Unit (General Reserve)">4th Unit (109–144)</option>
-              </select>
+          {/* Controls: Search, Director Filter & Export CSV */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-md">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 font-medium">Controlling Director:</span>
+                <select
+                  value={selectedDirectorFilter}
+                  onChange={(e) => setSelectedDirectorFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="ALL">All 144 Shares / Directors</option>
+                  <option value="SAIF AHMED SAKIL">Saif Ahmed Sakil (1–20)</option>
+                  <option value="M MASUD SAWDAGOR">M Masud Sawdagor (21–48)</option>
+                  <option value="M OMAR FARUQUE MOLLA">M Omar Faruque Molla (49–55)</option>
+                  <option value="SHAHIN AHMED">Shahin Ahmed (56–70)</option>
+                  <option value="ABUL HASHIM">Abul Hashim (71–87)</option>
+                  <option value="SIRAJUL ISLAM">Sirajul Islam (88–94)</option>
+                  <option value="M ABU YOUSUF">M Abu Yousuf (95–101)</option>
+                  <option value="FAIZAN AHMED">Faizan Ahmed (102–108)</option>
+                  <option value="4th Unit (General Reserve)">4th Unit (109–144)</option>
+                </select>
+              </div>
+
+              <div className="text-xs text-slate-400 border-l border-slate-800 pl-3 hidden sm:block">
+                Showing <strong className="text-emerald-400 font-mono">{filteredMembers.length}</strong> of 144 Members
+              </div>
             </div>
 
-            <div className="relative w-full sm:w-72">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search member, ID, phone, email..."
-                className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex-1 sm:w-80">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search Member ID, Share#, Name, NID, Phone, Address..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <button
+                onClick={handleExportDirectoryCSV}
+                title="Download complete Member Directory in CSV format (16 columns)"
+                className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-emerald-800/60 hover:border-emerald-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </button>
             </div>
           </div>
 
-          {/* Directory Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+          {/* Directory Table with exactly 16 requested columns */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px]">
+              <table className="w-full text-left text-xs min-w-[2150px]">
+                <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px] tracking-wider">
                   <tr>
-                    <th className="py-3 px-4">Member ID</th>
-                    <th className="py-3 px-4">Share #</th>
-                    <th className="py-3 px-4">Full Name</th>
-                    <th className="py-3 px-4">Controlling Director</th>
-                    <th className="py-3 px-4">Phone</th>
-                    <th className="py-3 px-4">Email</th>
-                    <th className="py-3 px-3 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Admin Action</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap sticky left-0 z-20 bg-slate-950 border-r border-slate-800/80 shadow-md">
+                      Member Id
+                    </th>
+                    <th className="py-3 px-3 whitespace-nowrap">Share#</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Full Name</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Controlling Director</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">Phone</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Email</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">NID/Birth ID</th>
+                    <th className="py-3 px-3 whitespace-nowrap">DoB</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Education</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Permanent Address</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Current Address</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">Spouse Name</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">Spouse Mobile</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Emergency Contact</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-center">Status</th>
+                    <th className="py-3 px-4 whitespace-nowrap text-right sticky right-0 z-20 bg-slate-950 border-l border-slate-800/80 shadow-md">
+                      Admin Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
                   {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-200">
-                        {m.id}
+                    <tr key={m.id} className="hover:bg-slate-800/50 transition group">
+                      {/* 1. Member Id (Sticky Left) */}
+                      <td className="py-3 px-3.5 font-mono font-bold whitespace-nowrap sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800/90 border-r border-slate-800/80">
+                        <span className="px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/80 text-emerald-400">
+                          {m.id}
+                        </span>
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-400">
+
+                      {/* 2. Share# */}
+                      <td className="py-3 px-3 font-mono font-bold text-slate-200 whitespace-nowrap">
                         #{m.shareNumber}
                       </td>
-                      <td className="py-3 px-4 font-medium text-white">
+
+                      {/* 3. Full Name */}
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span>{m.name}</span>
+                          <span className="font-semibold text-white">{m.name}</span>
+                          {m.ecDesignation && m.ecDesignation !== 'None' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              {m.ecDesignation}
+                            </span>
+                          )}
                           {m.pendingUpdate && (
-                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Pending update request" />
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Pending update request under review" />
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-emerald-400 font-semibold">
-                        {m.controllingDirectorName}
+
+                      {/* 4. Controlling Director */}
+                      <td className="py-3 px-4 text-emerald-400 font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Building className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />
+                          <span>{m.controllingDirectorName}</span>
+                        </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-300">
-                        {m.phone}
+
+                      {/* 5. Phone */}
+                      <td className="py-3 px-3.5 font-mono text-slate-300 whitespace-nowrap">
+                        <a href={`tel:${m.phone}`} className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
+                          <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span>{m.phone}</span>
+                        </a>
                       </td>
-                      <td className="py-3 px-4 text-slate-400">
-                        {m.email}
+
+                      {/* 6. Email */}
+                      <td className="py-3 px-4 font-mono text-slate-400 whitespace-nowrap">
+                        <a href={`mailto:${m.email}`} className="hover:text-emerald-300 transition-colors flex items-center gap-1.5">
+                          <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span>{m.email}</span>
+                        </a>
                       </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+
+                      {/* 7. NID/Birth ID */}
+                      <td className="py-3 px-3.5 font-mono text-slate-300 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-mono tracking-wide">
+                          {m.nidOrBirthId || 'N/A'}
+                        </span>
+                      </td>
+
+                      {/* 8. DoB */}
+                      <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span>{m.dob || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 9. Education */}
+                      <td className="py-3 px-4 text-slate-300 whitespace-nowrap text-[11px]">
+                        <div className="flex items-center gap-1.5 max-w-[240px] truncate" title={m.education}>
+                          <GraduationCap className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                          <span className="truncate">{m.education || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 10. Permanent Address */}
+                      <td className="py-3 px-4 text-slate-300 text-[11px]">
+                        <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.permanentAddress}>
+                          <MapPin className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+                          <span className="truncate">{m.permanentAddress || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 11. Current Address */}
+                      <td className="py-3 px-4 text-slate-300 text-[11px]">
+                        <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.currentAddress || m.address}>
+                          <MapPin className="w-3.5 h-3.5 text-emerald-400/80 shrink-0" />
+                          <span className="truncate">{m.currentAddress || m.address || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 12. Spouse Name */}
+                      <td className="py-3 px-3.5 text-slate-300 whitespace-nowrap text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <Heart className="w-3 h-3 text-rose-400/80 shrink-0" />
+                          <span>{m.spouseName || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 13. Spouse Mobile */}
+                      <td className="py-3 px-3.5 font-mono text-slate-400 whitespace-nowrap text-[11px]">
+                        {m.spouseMobile ? (
+                          <a href={`tel:${m.spouseMobile}`} className="hover:text-emerald-300 transition-colors flex items-center gap-1.5">
+                            <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                            <span>{m.spouseMobile}</span>
+                          </a>
+                        ) : (
+                          <span className="text-slate-600">N/A</span>
+                        )}
+                      </td>
+
+                      {/* 14. Emergency Contact */}
+                      <td className="py-3 px-4 text-slate-300 whitespace-nowrap text-[11px]">
+                        <div className="flex items-center gap-1.5 font-mono text-[11px] text-amber-300/90" title={m.emergencyContact}>
+                          <PhoneCall className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span>{m.emergencyContact || 'N/A'}</span>
+                        </div>
+                      </td>
+
+                      {/* 15. Status */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          m.status === 'ACTIVE'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                        }`}>
                           {m.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right">
+
+                      {/* 16. Admin Action (Sticky Right) */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap sticky right-0 z-10 bg-slate-900 group-hover:bg-slate-800/90 border-l border-slate-800/80">
                         <div className="flex items-center justify-end gap-1.5">
-                          {m.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN' ? (
-                            <span
-                              title="Saif Ahmed Sakil (Root System Admin) is strictly excluded from Delegated Admin password reset"
-                              className="px-2 py-1 bg-slate-800/60 border border-slate-700/60 text-slate-500 rounded text-[10px] font-mono cursor-not-allowed inline-flex items-center gap-1"
-                            >
-                              <Lock className="w-3 h-3 text-slate-500" />
-                              <span>Protected</span>
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleOpenResetPassword(m.id, m.name, m.id, 'MEMBER')}
-                              title={`Reset password for ${m.name} (${m.id})`}
-                              className="px-2 py-1 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-800/80 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
-                            >
-                              <KeyRound className="w-3 h-3 text-purple-400" />
-                              <span>Reset Pass</span>
-                            </button>
-                          )}
                           <button
-                            onClick={() => handleOpenDirectEdit(m)}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                            onClick={() => setSelectedDossierMember(m)}
+                            title={`View full profile dossier for ${m.name}`}
+                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
                           >
-                            <Edit3 className="w-3 h-3" />
-                            <span>Edit / Modify</span>
+                            <Eye className="w-3 h-3 text-slate-400" />
+                            <span>View</span>
                           </button>
+                          {canApproveAndModify && (
+                            <>
+                              {m.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN' ? (
+                                <span
+                                  title="Saif Ahmed Sakil (Root System Admin) is strictly excluded from Delegated Admin password reset"
+                                  className="px-2 py-1 bg-slate-800/60 border border-slate-700/60 text-slate-500 rounded text-[10px] font-mono cursor-not-allowed inline-flex items-center gap-1"
+                                >
+                                  <Lock className="w-3 h-3 text-slate-500" />
+                                  <span>Protected</span>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleOpenResetPassword(m.id, m.name, m.id, 'MEMBER')}
+                                  title={`Reset password for ${m.name} (${m.id})`}
+                                  className="px-2 py-1 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-800/80 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                                >
+                                  <KeyRound className="w-3 h-3 text-purple-400" />
+                                  <span>Reset Pass</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleOpenDirectEdit(m)}
+                                className="px-2.5 py-1 bg-emerald-950/60 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-800/80 rounded text-[11px] font-semibold transition inline-flex items-center gap-1 shadow"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                                <span>Edit / Modify</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1063,12 +1523,25 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       {/* Admin Direct Edit Modal */}
       {directEditMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Edit3 className="w-5 h-5 text-emerald-400" />
-                <span>Admin Direct Profile Edit: {directEditMember.id}</span>
-              </h3>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Direct Member Profile Edit</span>
+                    <span className="font-mono text-emerald-400 text-xs px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800">
+                      {directEditMember.id}
+                    </span>
+                    <span className="text-slate-400 text-xs font-mono">
+                      (Share #{directEditMember.shareNumber})
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Controlling Director: <strong className="text-emerald-400">{directEditMember.controllingDirectorName}</strong>
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setDirectEditMember(null)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg"
@@ -1077,27 +1550,16 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </button>
             </div>
 
-            <form onSubmit={handleSaveDirectEdit} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-400 mb-1">Member Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={adminName}
-                  onChange={(e) => setAdminName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveDirectEdit} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1">Phone Number</label>
+                  <label className="block text-slate-400 mb-1">Full Legal Name</label>
                   <input
                     type="text"
                     required
-                    value={adminPhone}
-                    onChange={(e) => setAdminPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-medium focus:border-emerald-500"
                   />
                 </div>
 
@@ -1106,7 +1568,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                   <select
                     value={adminStatus}
                     onChange={(e: any) => setAdminStatus(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
                   >
                     <option value="ACTIVE">ACTIVE</option>
                     <option value="INACTIVE">INACTIVE</option>
@@ -1114,25 +1576,121 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={adminEmail}
-                  onChange={(e) => setAdminEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={adminPhone}
+                    onChange={(e) => setAdminPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">NID / Birth ID</label>
+                  <input
+                    type="text"
+                    value={adminNid}
+                    onChange={(e) => setAdminNid(e.target.value)}
+                    placeholder="e.g. 19852692500000001"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Date of Birth (DoB)</label>
+                  <input
+                    type="date"
+                    value={adminDob}
+                    onChange={(e) => setAdminDob(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Plot / Residence Address</label>
-                <textarea
-                  rows={2}
-                  required
-                  value={adminAddress}
-                  onChange={(e) => setAdminAddress(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                <label className="block text-slate-400 mb-1">Educational Qualification</label>
+                <input
+                  type="text"
+                  value={adminEducation}
+                  onChange={(e) => setAdminEducation(e.target.value)}
+                  placeholder="e.g. B.Sc. in Civil Engineering (BUET)"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Permanent Address</label>
+                  <textarea
+                    rows={2}
+                    value={adminPermAddress}
+                    onChange={(e) => setAdminPermAddress(e.target.value)}
+                    placeholder="Village, PO, Upazila/Dist"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Current Address (Plot / Residence)</label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={adminCurrAddress}
+                    onChange={(e) => setAdminCurrAddress(e.target.value)}
+                    placeholder="House, Road, Sector, Uttara, Dhaka"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Spouse Full Name</label>
+                  <input
+                    type="text"
+                    value={adminSpouseName}
+                    onChange={(e) => setAdminSpouseName(e.target.value)}
+                    placeholder="Spouse Name"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Spouse Mobile</label>
+                  <input
+                    type="text"
+                    value={adminSpouseMobile}
+                    onChange={(e) => setAdminSpouseMobile(e.target.value)}
+                    placeholder="+88017..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Emergency Contact (Phone & Relationship)</label>
+                <input
+                  type="text"
+                  value={adminEmergencyContact}
+                  onChange={(e) => setAdminEmergencyContact(e.target.value)}
+                  placeholder="+88018... (Brother / Relative)"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-emerald-500"
                 />
               </div>
 
@@ -1159,7 +1717,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       {/* Modify & Approve Modal */}
       {modifyingRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <FileCheck className="w-5 h-5 text-blue-400" />
@@ -1173,23 +1731,23 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </button>
             </div>
 
-            <form onSubmit={handleCommitApprovalWithModifications} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleCommitApprovalWithModifications} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
               <p className="text-slate-300">
                 You can adjust or verify the proposed information before committing the official approval.
               </p>
 
-              <div>
-                <label className="block text-slate-400 mb-1">Approved Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={modName}
-                  onChange={(e) => setModName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={modName}
+                    onChange={(e) => setModName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Approved Phone</label>
                   <input
@@ -1197,10 +1755,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     required
                     value={modPhone}
                     onChange={(e) => setModPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Approved Email</label>
                   <input
@@ -1208,18 +1768,95 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     required
                     value={modEmail}
                     onChange={(e) => setModEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved NID / Birth ID</label>
+                  <input
+                    type="text"
+                    value={modNid}
+                    onChange={(e) => setModNid(e.target.value)}
+                    placeholder="NID / Birth ID"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved DoB</label>
+                  <input
+                    type="date"
+                    value={modDob}
+                    onChange={(e) => setModDob(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Education</label>
+                  <input
+                    type="text"
+                    value={modEducation}
+                    onChange={(e) => setModEducation(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
                   />
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Permanent Address</label>
+                  <textarea
+                    rows={2}
+                    value={modPermAddress}
+                    onChange={(e) => setModPermAddress(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Current Address</label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={modCurrAddress}
+                    onChange={(e) => setModCurrAddress(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Spouse Name</label>
+                  <input
+                    type="text"
+                    value={modSpouseName}
+                    onChange={(e) => setModSpouseName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Approved Spouse Mobile</label>
+                  <input
+                    type="text"
+                    value={modSpouseMobile}
+                    onChange={(e) => setModSpouseMobile(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-slate-400 mb-1">Approved Address</label>
-                <textarea
-                  rows={2}
-                  required
-                  value={modAddress}
-                  onChange={(e) => setModAddress(e.target.value)}
+                <label className="block text-slate-400 mb-1">Approved Emergency Contact</label>
+                <input
+                  type="text"
+                  value={modEmergencyContact}
+                  onChange={(e) => setModEmergencyContact(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white"
                 />
               </div>
@@ -1240,6 +1877,200 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Member Profile Dossier Modal (All 16 Attributes) */}
+      {selectedDossierMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-base font-bold shadow">
+                  {selectedDossierMember.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">{selectedDossierMember.name}</h3>
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      {selectedDossierMember.id}
+                    </span>
+                    <span className="font-mono text-xs text-slate-300 font-semibold">
+                      Share #{selectedDossierMember.shareNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Prottasha Housing Society – Official Member Dossier & Directory Record
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedDossierMember(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Dossier Body with 16 Attributes */}
+            <div className="p-6 space-y-5 text-xs max-h-[75vh] overflow-y-auto">
+              {/* Category 1: Identification & Core Share */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>Shareholder Identification & Registry</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Member Id</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm">{selectedDossierMember.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Share#</span>
+                    <span className="font-mono font-bold text-white text-sm">#{selectedDossierMember.shareNumber} of 144</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Status</span>
+                    <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mt-0.5 ${
+                      selectedDossierMember.status === 'ACTIVE'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {selectedDossierMember.status}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Controlling Director</span>
+                    <span className="font-medium text-emerald-300">{selectedDossierMember.controllingDirectorName}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">NID / Birth ID</span>
+                    <span className="font-mono text-slate-200">{selectedDossierMember.nidOrBirthId || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Date of Birth (DoB)</span>
+                    <span className="font-mono text-slate-200">{selectedDossierMember.dob || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category 2: Educational & Professional */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Educational Qualification</span>
+                </span>
+                <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <div className="text-slate-200 font-medium">{selectedDossierMember.education || 'N/A'}</div>
+                  {selectedDossierMember.ecDesignation && selectedDossierMember.ecDesignation !== 'None' && (
+                    <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] flex items-center gap-2">
+                      <span className="text-slate-400">EC Designation:</span>
+                      <span className="font-bold text-emerald-400">{selectedDossierMember.ecDesignation}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Category 3: Contact & Communication */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>Direct Contact Information</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Primary Phone</span>
+                    <a href={`tel:${selectedDossierMember.phone}`} className="font-mono text-slate-200 hover:text-emerald-400 flex items-center gap-1.5 mt-0.5">
+                      <Phone className="w-3 h-3 text-slate-500" />
+                      <span>{selectedDossierMember.phone}</span>
+                    </a>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Official Email</span>
+                    <a href={`mailto:${selectedDossierMember.email}`} className="font-mono text-slate-200 hover:text-emerald-400 flex items-center gap-1.5 mt-0.5">
+                      <Mail className="w-3 h-3 text-slate-500" />
+                      <span>{selectedDossierMember.email}</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category 4: Residential & Permanent Address */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Residential & Permanent Addresses</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Current Address (Plot / Residence)</span>
+                    <span className="text-slate-200 block mt-0.5 leading-relaxed">{selectedDossierMember.currentAddress || selectedDossierMember.address || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Permanent Address</span>
+                    <span className="text-slate-200 block mt-0.5 leading-relaxed">{selectedDossierMember.permanentAddress || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category 5: Family & Emergency Contact */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider flex items-center gap-1.5">
+                  <Heart className="w-3.5 h-3.5" />
+                  <span>Spouse & Emergency Contact</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Spouse Name</span>
+                    <span className="text-slate-200 font-medium block mt-0.5">{selectedDossierMember.spouseName || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Spouse Mobile</span>
+                    {selectedDossierMember.spouseMobile ? (
+                      <a href={`tel:${selectedDossierMember.spouseMobile}`} className="font-mono text-slate-200 hover:text-emerald-400 block mt-0.5">
+                        {selectedDossierMember.spouseMobile}
+                      </a>
+                    ) : (
+                      <span className="text-slate-500 block mt-0.5">N/A</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
+                    <span className="font-mono text-amber-300 font-medium block mt-0.5">{selectedDossierMember.emergencyContact || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-6 py-3.5 border-t border-slate-800 flex items-center justify-between bg-slate-950">
+              <span className="text-[11px] text-slate-500 font-mono">
+                16 Verified Attributes Registered
+              </span>
+              <div className="flex items-center gap-2">
+                {canApproveAndModify && (
+                  <button
+                    onClick={() => {
+                      const target = selectedDossierMember;
+                      setSelectedDossierMember(null);
+                      handleOpenDirectEdit(target);
+                    }}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Profile</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedDossierMember(null)}
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

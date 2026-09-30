@@ -15,7 +15,7 @@ import { ExpenseModule } from './components/ExpenseModule';
 import { DirectorSummaryView } from './components/DirectorSummaryView';
 import { MemberStatementView } from './components/MemberStatementView';
 import { ECGovernanceView } from './components/ECGovernanceView';
-import { CommunityChatView } from './components/CommunityChatView';
+import { InfoCommunicationView } from './components/InfoCommunicationView';
 import { AuditLogView } from './components/AuditLogView';
 import { BackupSyncView } from './components/BackupSyncView';
 import { UserProfileView } from './components/UserProfileView';
@@ -117,6 +117,7 @@ export default function App() {
           <ExecutiveDashboard
             incomes={incomes}
             expenses={expenses}
+            members={members}
             currentUser={currentUser}
             onNavigateTab={(tab) => setActiveTab(tab)}
           />
@@ -172,9 +173,12 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'community_chat' && (
-          <CommunityChatView
+        {(activeTab === 'community_chat' || activeTab === 'info_communication') && (
+          <InfoCommunicationView
             currentUser={currentUser}
+            members={members}
+            incomes={incomes}
+            expenses={expenses}
           />
         )}
 

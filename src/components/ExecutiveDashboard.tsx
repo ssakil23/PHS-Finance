@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -12,23 +12,25 @@ import {
   CheckCircle,
   AlertTriangle,
   Building,
-  PlusCircle,
-  FileSpreadsheet,
 } from 'lucide-react';
-import { IncomeEntry, ExpenseEntry, User } from '../types';
+import { IncomeEntry, ExpenseEntry, User, Member } from '../types';
 import {
   computeProjectFinancials,
   computeDirectorSummaries,
   formatBDT,
 } from '../utils/calculations';
 import { TOTAL_SHARES } from '../utils/directors';
+import { storageService } from '../services/storageService';
 import { FinancialTrendChart } from './FinancialTrendChart';
+import { CashFlowGapD3Chart } from './CashFlowGapD3Chart';
+import { TierComparisonMatrix } from './TierComparisonMatrix';
 
 interface ExecutiveDashboardProps {
   incomes: IncomeEntry[];
   expenses: ExpenseEntry[];
   currentUser: User | null;
   onNavigateTab: (tab: string) => void;
+  members?: Member[];
 }
 
 export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
@@ -36,9 +38,11 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   expenses,
   currentUser,
   onNavigateTab,
+  members: propMembers,
 }) => {
   const financials = computeProjectFinancials(incomes, expenses);
   const directorSummaries = computeDirectorSummaries(incomes, expenses);
+  const members = propMembers || storageService.getMembers();
 
   const canApprove =
     currentUser?.role === 'SYSTEM_ADMIN' || currentUser?.role === 'DELEGATED_ADMIN';
@@ -64,29 +68,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </p>
           </div>
 
-          {/* Quick Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => onNavigateTab('incomes')}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md transition flex items-center gap-1.5"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Record Income</span>
-            </button>
-            <button
-              onClick={() => onNavigateTab('expenses')}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Record Expense</span>
-            </button>
-            <button
-              onClick={() => onNavigateTab('directors')}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Director Matrix</span>
-            </button>
+          {/* Central Society Status Indicators */}
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right hidden sm:block">
+              <div className="text-[11px] text-slate-400">Total Authorized Shares</div>
+              <div className="text-sm font-bold font-mono text-emerald-400">144 Allocated</div>
+            </div>
+            <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right hidden sm:block">
+              <div className="text-[11px] text-slate-400">Audit Status</div>
+              <div className="text-sm font-bold text-emerald-300 flex items-center gap-1.5 justify-end">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Escrow Reconciled</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -194,6 +188,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
       {/* Recharts Monthly Trend Analysis Growth Component */}
       <FinancialTrendChart incomes={incomes} expenses={expenses} />
+
+      {/* D3.js Chart: Outstanding Member Dues vs Projected Monthly Income (Cash Flow Gap Visualization) */}
+      <CashFlowGapD3Chart
+        incomes={incomes}
+        expenses={expenses}
+        members={members}
+      />
+
+      {/* Tier wise INCOME Vs EXPENSE comparison (Integrated before Director Share Allocation & Balance Matrix) */}
+      <TierComparisonMatrix
+        incomes={incomes}
+        expenses={expenses}
+      />
 
       {/* Director Summary Dashboard Calculations (Formula: (Total Project Expense * Shares) / 144) */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">

@@ -47,6 +47,10 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   // Status message
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // In-modal confirmation states
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   // Sync categories
   const reloadCategories = () => {
     setIncomeCategories(storageService.getIncomeCategories());
@@ -60,6 +64,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       setEditingCatName(null);
       setNewCatName('');
       setFeedback(null);
+      setCategoryToDelete(null);
+      setShowResetConfirm(false);
     }
   }, [isOpen, initialTab]);
 
@@ -107,6 +113,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     setEditInputVal(catName);
     setCascadeUpdate(true);
     setFeedback(null);
+    setCategoryToDelete(null);
   };
 
   const handleSaveEdit = (oldCatName: string) => {
@@ -137,20 +144,18 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     }
   };
 
-  const handleDeleteCategory = (catName: string) => {
+  const handlePromptDeleteCategory = (catName: string) => {
     if (!currentUser || !isSystemAdmin) {
       setFeedback({ type: 'error', message: 'Access Denied: Only SYSTEM ADMIN can delete categories.' });
       return;
     }
-    const count = getUsageCount(catName, activeTab);
-    const confirmPrompt = count > 0
-      ? `Warning: "${catName}" is currently assigned to ${count} active transaction(s). Are you sure you want to delete this category from future selection?`
-      : `Are you sure you want to delete the category "${catName}"?`;
+    setCategoryToDelete(catName);
+    setFeedback(null);
+  };
 
-    if (!window.confirm(confirmPrompt)) {
-      return;
-    }
-
+  const handleConfirmDelete = () => {
+    if (!categoryToDelete || !currentUser || !isSystemAdmin) return;
+    const catName = categoryToDelete;
     try {
       if (activeTab === 'INCOME') {
         storageService.deleteIncomeCategory(catName, currentUser);
@@ -158,25 +163,25 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
         storageService.deleteExpenseCategory(catName, currentUser);
       }
       setFeedback({ type: 'success', message: `Deleted category "${catName}".` });
+      setCategoryToDelete(null);
       reloadCategories();
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message || 'Failed to delete category.' });
     }
   };
 
-  const handleResetDefaults = () => {
+  const handleConfirmResetDefaults = () => {
     if (!currentUser || !isSystemAdmin) {
       setFeedback({ type: 'error', message: 'Access Denied: Only SYSTEM ADMIN can reset categories.' });
       return;
     }
-    if (window.confirm(`Reset ${activeTab} categories to standard system defaults?`)) {
-      try {
-        storageService.resetCategoriesToDefault(activeTab, currentUser);
-        setFeedback({ type: 'success', message: `Reset ${activeTab} categories to defaults.` });
-        reloadCategories();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'Failed to reset categories.' });
-      }
+    try {
+      storageService.resetCategoriesToDefault(activeTab, currentUser);
+      setFeedback({ type: 'success', message: `Reset ${activeTab} categories to defaults.` });
+      setShowResetConfirm(false);
+      reloadCategories();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'Failed to reset categories.' });
     }
   };
 
@@ -249,7 +254,10 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           </div>
 
           <button
-            onClick={handleResetDefaults}
+            onClick={() => {
+              setShowResetConfirm(true);
+              setCategoryToDelete(null);
+            }}
             className="text-[11px] text-slate-400 hover:text-amber-300 flex items-center gap-1 transition mb-3"
             title="Restore default category list"
           >
@@ -257,6 +265,61 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             <span>Restore Defaults</span>
           </button>
         </div>
+
+        {/* Confirmation banner for Reset Defaults */}
+        {showResetConfirm && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-amber-950/60 border border-amber-800 text-xs text-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Reset all <strong>{activeTab}</strong> categories back to standard system defaults?</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleConfirmResetDefaults}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-semibold"
+              >
+                Yes, Reset
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation banner for Delete Category */}
+        {categoryToDelete && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>
+                Delete category <strong>"{categoryToDelete}"</strong>?
+                {getUsageCount(categoryToDelete, activeTab) > 0 && (
+                  <span className="text-amber-300 ml-1">
+                    ({getUsageCount(categoryToDelete, activeTab)} existing records currently use it)
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <button
+                onClick={handleConfirmDelete}
+                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-semibold"
+              >
+                Confirm Delete
+              </button>
+              <button
+                onClick={() => setCategoryToDelete(null)}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Feedback Banner */}
         {feedback && (
@@ -397,7 +460,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteCategory(cat)}
+                            onClick={() => handlePromptDeleteCategory(cat)}
                             className="p-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-900/40 text-rose-400 hover:text-rose-300 border border-rose-900/30 transition flex items-center gap-1 text-xs"
                             title="Delete category"
                           >

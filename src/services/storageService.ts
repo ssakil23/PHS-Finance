@@ -16,6 +16,11 @@ import {
   OfficialUser,
   PromotedECMember,
   ProfileUpdateRequest,
+  SocietyDocument,
+  MemberQuery,
+  DiscussionPost,
+  DocumentCategory,
+  QueryCategory,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -26,7 +31,11 @@ import {
   INITIAL_ELECTION_POLL,
   INITIAL_EXECUTIVE_COMMITTEE,
   INITIAL_OFFICIALS,
+  INITIAL_DOCUMENTS,
+  INITIAL_POSTS,
+  INITIAL_QUERIES,
 } from '../utils/seedData';
+import { ensureMemberDemographics } from '../utils/directors';
 import { formatBDT } from '../utils/calculations';
 
 export const DEFAULT_INCOME_CATEGORIES: string[] = [
@@ -72,6 +81,9 @@ const STORAGE_KEYS = {
   INCOME_CATEGORIES: 'phs_finance_income_categories_v1',
   EXPENSE_CATEGORIES: 'phs_finance_expense_categories_v1',
   LAST_SYNC: 'phs_finance_last_sync_v1',
+  DOCUMENTS: 'phs_finance_documents_v1',
+  POSTS: 'phs_finance_posts_v1',
+  QUERIES: 'phs_finance_queries_v1',
 };
 
 class StorageService {
@@ -197,8 +209,10 @@ class StorageService {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.MEMBERS);
       const members: Member[] = data ? JSON.parse(data) : INITIAL_MEMBERS;
-      // Ensure required EC designations on member records
-      members.forEach((m) => {
+      let hasDemographicUpdates = false;
+
+      // Ensure required EC designations and complete demographic details on member records
+      const enrichedMembers = members.map((m) => {
         if (m.id === 'PHSM-001' || m.shareNumber === 1) m.ecDesignation = 'President';
         if (m.id === 'PHSM-049' || m.shareNumber === 49) m.ecDesignation = 'VICE PRESIDENT (VP)';
         if (m.id === 'PHSM-021' || m.shareNumber === 21) m.ecDesignation = 'General Secretary';
@@ -211,8 +225,28 @@ class StorageService {
         ) {
           m.ecDesignation = 'MEMBER';
         }
+
+        const enriched = ensureMemberDemographics(m);
+        if (
+          !m.nidOrBirthId ||
+          !m.dob ||
+          !m.education ||
+          !m.permanentAddress ||
+          !m.currentAddress ||
+          !m.spouseName ||
+          !m.spouseMobile ||
+          !m.emergencyContact
+        ) {
+          hasDemographicUpdates = true;
+        }
+        return enriched;
       });
-      return members;
+
+      if (hasDemographicUpdates) {
+        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(enrichedMembers));
+      }
+
+      return enrichedMembers;
     } catch {
       return INITIAL_MEMBERS;
     }
@@ -251,7 +285,20 @@ class StorageService {
 
   public submitProfileUpdateRequest(
     memberId: string,
-    proposed: { name: string; phone: string; email: string; address: string },
+    proposed: {
+      name: string;
+      phone: string;
+      email: string;
+      address: string;
+      nidOrBirthId?: string;
+      dob?: string;
+      education?: string;
+      permanentAddress?: string;
+      currentAddress?: string;
+      spouseName?: string;
+      spouseMobile?: string;
+      emergencyContact?: string;
+    },
     currentUser: User
   ): ProfileUpdateRequest {
     const requests = this.getProfileUpdateRequests();
@@ -262,6 +309,14 @@ class StorageService {
       proposedPhone: proposed.phone,
       proposedEmail: proposed.email,
       proposedAddress: proposed.address,
+      proposedNidOrBirthId: proposed.nidOrBirthId,
+      proposedDob: proposed.dob,
+      proposedEducation: proposed.education,
+      proposedPermanentAddress: proposed.permanentAddress,
+      proposedCurrentAddress: proposed.currentAddress || proposed.address,
+      proposedSpouseName: proposed.spouseName,
+      proposedSpouseMobile: proposed.spouseMobile,
+      proposedEmergencyContact: proposed.emergencyContact,
       requestedAt: new Date().toISOString(),
       requestedBy: currentUser.name,
       status: 'PENDING',
@@ -279,6 +334,14 @@ class StorageService {
         phone: proposed.phone,
         email: proposed.email,
         address: proposed.address,
+        nidOrBirthId: proposed.nidOrBirthId,
+        dob: proposed.dob,
+        education: proposed.education,
+        permanentAddress: proposed.permanentAddress,
+        currentAddress: proposed.currentAddress || proposed.address,
+        spouseName: proposed.spouseName,
+        spouseMobile: proposed.spouseMobile,
+        emergencyContact: proposed.emergencyContact,
         requestedAt: new Date().toISOString(),
       };
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
@@ -299,7 +362,20 @@ class StorageService {
   public approveProfileUpdateRequest(
     requestId: string,
     currentUser: User,
-    modifications?: { name?: string; phone?: string; email?: string; address?: string }
+    modifications?: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      nidOrBirthId?: string;
+      dob?: string;
+      education?: string;
+      permanentAddress?: string;
+      currentAddress?: string;
+      spouseName?: string;
+      spouseMobile?: string;
+      emergencyContact?: string;
+    }
   ): void {
     if (currentUser.role !== 'SYSTEM_ADMIN' && currentUser.role !== 'DELEGATED_ADMIN') {
       throw new Error('Only System Admin or Delegated Admin can approve profile updates.');
@@ -322,6 +398,28 @@ class StorageService {
       m.phone = modifications?.phone || req.proposedPhone;
       m.email = modifications?.email || req.proposedEmail;
       m.address = modifications?.address || req.proposedAddress;
+      m.currentAddress = modifications?.currentAddress || modifications?.address || req.proposedCurrentAddress || req.proposedAddress;
+      if (modifications?.permanentAddress || req.proposedPermanentAddress) {
+        m.permanentAddress = modifications?.permanentAddress || req.proposedPermanentAddress;
+      }
+      if (modifications?.nidOrBirthId || req.proposedNidOrBirthId) {
+        m.nidOrBirthId = modifications?.nidOrBirthId || req.proposedNidOrBirthId;
+      }
+      if (modifications?.dob || req.proposedDob) {
+        m.dob = modifications?.dob || req.proposedDob;
+      }
+      if (modifications?.education || req.proposedEducation) {
+        m.education = modifications?.education || req.proposedEducation;
+      }
+      if (modifications?.spouseName || req.proposedSpouseName) {
+        m.spouseName = modifications?.spouseName || req.proposedSpouseName;
+      }
+      if (modifications?.spouseMobile || req.proposedSpouseMobile) {
+        m.spouseMobile = modifications?.spouseMobile || req.proposedSpouseMobile;
+      }
+      if (modifications?.emergencyContact || req.proposedEmergencyContact) {
+        m.emergencyContact = modifications?.emergencyContact || req.proposedEmergencyContact;
+      }
       delete m.pendingUpdate;
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
     }
@@ -1394,6 +1492,330 @@ class StorageService {
       );
       this.notify();
     }
+  }
+
+  // --- Documentations Sub-module (System Admin, Delegated Admin & Official Uploads) ---
+  public isUserAuthorizedToAttachDocs(user: User | null): boolean {
+    if (!user) return false;
+    if (user.role === 'SYSTEM_ADMIN' || user.role === 'DELEGATED_ADMIN' || user.role === 'MANAGER') return true;
+    if (user.officialDesignation && user.officialDesignation !== 'None') return true;
+    const officials = this.getOfficials();
+    return officials.some((o) => o.username === user.username && o.status === 'ACTIVE');
+  }
+
+  public getDocuments(): SocietyDocument[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+      return data ? JSON.parse(data) : INITIAL_DOCUMENTS;
+    } catch {
+      return INITIAL_DOCUMENTS;
+    }
+  }
+
+  public addDocument(
+    doc: {
+      title: string;
+      category: DocumentCategory;
+      description: string;
+      fileName: string;
+      fileType: 'PDF' | 'DOCX' | 'XLSX' | 'JPG' | 'PNG' | 'ZIP';
+      fileSize: string;
+      fileDataUrl?: string;
+      isPinned?: boolean;
+    },
+    currentUser: User
+  ): SocietyDocument {
+    if (!this.isUserAuthorizedToAttachDocs(currentUser)) {
+      throw new Error('Access Denied: Only System Admin, Delegated Admin, and Society Officials can attach official documents.');
+    }
+
+    const docs = this.getDocuments();
+    const newDoc: SocietyDocument = {
+      id: `DOC-${new Date().getFullYear()}-${String(docs.length + 1).padStart(3, '0')}`,
+      title: doc.title,
+      category: doc.category,
+      description: doc.description,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      fileSize: doc.fileSize,
+      fileDataUrl: doc.fileDataUrl,
+      uploadedBy: currentUser.name,
+      uploadedByRole: currentUser.role,
+      uploadedByDesignation: currentUser.officialDesignation || currentUser.ecDesignation || currentUser.role,
+      uploadedAt: new Date().toISOString(),
+      isPinned: doc.isPinned || false,
+      downloadCount: 0,
+    };
+
+    // Prepend new documents
+    docs.unshift(newDoc);
+    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'DOCUMENT',
+      newDoc.id,
+      `Attached official document "${newDoc.title}" under ${newDoc.category}`
+    );
+    this.notify();
+    return newDoc;
+  }
+
+  public deleteDocument(id: string, currentUser: User): boolean {
+    if (!this.isUserAuthorizedToAttachDocs(currentUser)) {
+      throw new Error('Access Denied: Only authorized administrators or officials can remove documents.');
+    }
+    const docs = this.getDocuments();
+    const filtered = docs.filter((d) => d.id !== id);
+    if (filtered.length !== docs.length) {
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filtered));
+      this.logAudit(
+        currentUser,
+        'HARD_DELETE',
+        'DOCUMENT',
+        id,
+        `Deleted society document ${id}`
+      );
+      this.notify();
+      return true;
+    }
+    return false;
+  }
+
+  public incrementDocumentDownload(id: string): void {
+    const docs = this.getDocuments();
+    const target = docs.find((d) => d.id === id);
+    if (target) {
+      target.downloadCount = (target.downloadCount || 0) + 1;
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+      this.notify();
+    }
+  }
+
+  // --- Discussion Group Sub-module (Instant Social, Progress Sharing, Picture Sharing) ---
+  public getDiscussionPosts(): DiscussionPost[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.POSTS);
+      return data ? JSON.parse(data) : INITIAL_POSTS;
+    } catch {
+      return INITIAL_POSTS;
+    }
+  }
+
+  public addDiscussionPost(
+    post: {
+      message: string;
+      category: DiscussionPost['category'];
+      imageUrl?: string;
+      imageCaption?: string;
+    },
+    currentUser: User
+  ): DiscussionPost {
+    const posts = this.getDiscussionPosts();
+    const newPost: DiscussionPost = {
+      id: `POST-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 5)}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: currentUser.role,
+      senderMemberId: currentUser.memberId,
+      senderDesignation: currentUser.ecDesignation || currentUser.officialDesignation,
+      message: post.message,
+      category: post.category,
+      imageUrl: post.imageUrl,
+      imageCaption: post.imageCaption,
+      timestamp: new Date().toISOString(),
+      likesCount: 0,
+      likedBy: [],
+      comments: [],
+    };
+
+    posts.unshift(newPost);
+    localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(posts));
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'CHAT',
+      newPost.id,
+      `Published discussion post in category ${post.category}`
+    );
+    this.notify();
+    return newPost;
+  }
+
+  public toggleLikePost(postId: string, userId: string): void {
+    const posts = this.getDiscussionPosts();
+    const target = posts.find((p) => p.id === postId);
+    if (target) {
+      if (!target.likedBy) target.likedBy = [];
+      const hasLiked = target.likedBy.includes(userId);
+      if (hasLiked) {
+        target.likedBy = target.likedBy.filter((id) => id !== userId);
+        target.likesCount = Math.max(0, (target.likesCount || 1) - 1);
+      } else {
+        target.likedBy.push(userId);
+        target.likesCount = (target.likesCount || 0) + 1;
+      }
+      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(posts));
+      this.notify();
+    }
+  }
+
+  public addPostComment(postId: string, message: string, currentUser: User): void {
+    const posts = this.getDiscussionPosts();
+    const target = posts.find((p) => p.id === postId);
+    if (target) {
+      if (!target.comments) target.comments = [];
+      target.comments.push({
+        id: `COMM-${Date.now().toString(36)}`,
+        userName: currentUser.name,
+        userRole: currentUser.role,
+        message,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(posts));
+      this.notify();
+    }
+  }
+
+  public moderateDiscussionPost(id: string, currentUser: User): void {
+    if (currentUser.role !== 'SYSTEM_ADMIN' && currentUser.role !== 'DELEGATED_ADMIN' && currentUser.role !== 'MANAGER') {
+      throw new Error('Only Admins or Managers can moderate community discussion posts.');
+    }
+    const posts = this.getDiscussionPosts();
+    const post = posts.find((p) => p.id === id);
+    if (post) {
+      post.isRemovedByModerator = true;
+      post.moderatedBy = currentUser.name;
+      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(posts));
+      this.logAudit(
+        currentUser,
+        'SOFT_DELETE',
+        'CHAT',
+        id,
+        `Moderated discussion post by ${post.senderName}`
+      );
+      this.notify();
+    }
+  }
+
+  // --- Query Window Sub-module (Finance & Deposit, Site & Land Queries) ---
+  public getQueries(): MemberQuery[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.QUERIES);
+      return data ? JSON.parse(data) : INITIAL_QUERIES;
+    } catch {
+      return INITIAL_QUERIES;
+    }
+  }
+
+  public addQuery(
+    data: {
+      category: QueryCategory;
+      subject: string;
+      details: string;
+      referenceId?: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+    },
+    currentUser: User
+  ): MemberQuery {
+    const queries = this.getQueries();
+    const newQuery: MemberQuery = {
+      id: `QRY-${new Date().getFullYear()}-${String(queries.length + 1).padStart(3, '0')}`,
+      memberId: currentUser.memberId || currentUser.id,
+      shareNumber: currentUser.shareNumber,
+      submitterName: currentUser.name,
+      submitterPhone: currentUser.phone,
+      category: data.category,
+      subject: data.subject,
+      details: data.details,
+      referenceId: data.referenceId,
+      attachmentUrl: data.attachmentUrl,
+      attachmentName: data.attachmentName,
+      status: 'OPEN',
+      submittedAt: new Date().toISOString(),
+      responses: [],
+    };
+
+    queries.unshift(newQuery);
+    localStorage.setItem(STORAGE_KEYS.QUERIES, JSON.stringify(queries));
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'QUERY',
+      newQuery.id,
+      `Submitted inquiry ${newQuery.id}: "${data.subject}" under ${data.category}`
+    );
+    this.notify();
+    return newQuery;
+  }
+
+  public addQueryResponse(
+    queryId: string,
+    message: string,
+    currentUser: User,
+    newStatus?: MemberQuery['status']
+  ): void {
+    const queries = this.getQueries();
+    const target = queries.find((q) => q.id === queryId);
+    if (!target) throw new Error('Query ticket not found.');
+
+    target.responses.push({
+      id: `RESP-${Date.now().toString(36)}`,
+      responderName: currentUser.name,
+      responderRole: currentUser.role,
+      responderDesignation: currentUser.officialDesignation || currentUser.ecDesignation || currentUser.role,
+      message,
+      respondedAt: new Date().toISOString(),
+    });
+
+    if (newStatus) {
+      target.status = newStatus;
+      if (newStatus === 'RESOLVED') {
+        target.resolvedAt = new Date().toISOString();
+        target.resolvedBy = currentUser.name;
+      }
+    } else if (target.status === 'OPEN') {
+      target.status = 'IN_REVIEW';
+    }
+
+    localStorage.setItem(STORAGE_KEYS.QUERIES, JSON.stringify(queries));
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'QUERY',
+      queryId,
+      `Responded to query ticket ${queryId} (Status: ${target.status})`
+    );
+    this.notify();
+  }
+
+  public updateQueryStatus(
+    queryId: string,
+    status: MemberQuery['status'],
+    currentUser: User,
+    remarks?: string
+  ): void {
+    const queries = this.getQueries();
+    const target = queries.find((q) => q.id === queryId);
+    if (!target) throw new Error('Query ticket not found.');
+
+    target.status = status;
+    if (status === 'RESOLVED') {
+      target.resolvedAt = new Date().toISOString();
+      target.resolvedBy = currentUser.name;
+      if (remarks) target.resolutionRemarks = remarks;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.QUERIES, JSON.stringify(queries));
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'QUERY',
+      queryId,
+      `Updated query status to ${status}${remarks ? ` (${remarks})` : ''}`
+    );
+    this.notify();
   }
 
   // --- Backup & Restore Engine ---
