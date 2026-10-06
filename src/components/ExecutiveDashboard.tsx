@@ -12,6 +12,11 @@ import {
   CheckCircle,
   AlertTriangle,
   Building,
+  Target,
+  BarChart3,
+  FileSpreadsheet,
+  FileText,
+  Sparkles,
 } from 'lucide-react';
 import { IncomeEntry, ExpenseEntry, User, Member } from '../types';
 import {
@@ -22,8 +27,11 @@ import {
 import { TOTAL_SHARES } from '../utils/directors';
 import { storageService } from '../services/storageService';
 import { FinancialTrendChart } from './FinancialTrendChart';
+import { ExpenseForecastChart } from './ExpenseForecastChart';
 import { CashFlowGapD3Chart } from './CashFlowGapD3Chart';
 import { TierComparisonMatrix } from './TierComparisonMatrix';
+import { AnnualBudgetVarianceSubModule } from './AnnualBudgetVarianceSubModule';
+import { BoardPresentationPDFModal } from './BoardPresentationPDFModal';
 
 interface ExecutiveDashboardProps {
   incomes: IncomeEntry[];
@@ -40,6 +48,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   onNavigateTab,
   members: propMembers,
 }) => {
+  const [dashboardSubTab, setDashboardSubTab] = useState<'OVERVIEW' | 'BUDGET_VARIANCE' | 'EXPENSE_FORECAST'>('OVERVIEW');
+  const [showBoardPDFModal, setShowBoardPDFModal] = useState<boolean>(false);
   const financials = computeProjectFinancials(incomes, expenses);
   const directorSummaries = computeDirectorSummaries(incomes, expenses);
   const members = propMembers || storageService.getMembers();
@@ -70,6 +80,17 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
           {/* Central Society Status Indicators */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDashboardSubTab('BUDGET_VARIANCE')}
+              className="bg-slate-800/80 hover:bg-slate-700/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right transition cursor-pointer"
+              title="Switch to Board Annual Budget & Variance Analysis sub-module"
+            >
+              <div className="text-[11px] text-slate-400">Board Annual Budget</div>
+              <div className="text-sm font-bold text-indigo-400 flex items-center gap-1.5 justify-end">
+                <Target className="w-4 h-4 text-indigo-400" />
+                <span>Variance Report</span>
+              </div>
+            </button>
             <div className="bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right hidden sm:block">
               <div className="text-[11px] text-slate-400">Total Authorized Shares</div>
               <div className="text-sm font-bold font-mono text-emerald-400">144 Allocated</div>
@@ -84,6 +105,74 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Sub-module Navigation Tabs */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDashboardSubTab('OVERVIEW')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+              dashboardSubTab === 'OVERVIEW'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Executive Overview & Balance Matrix</span>
+          </button>
+
+          <button
+            onClick={() => setDashboardSubTab('BUDGET_VARIANCE')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+              dashboardSubTab === 'BUDGET_VARIANCE'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Annual Budget Targets & Variance</span>
+          </button>
+
+          <button
+            onClick={() => setDashboardSubTab('EXPENSE_FORECAST')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+              dashboardSubTab === 'EXPENSE_FORECAST'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Predictive Expense Forecast (Recharts)</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowBoardPDFModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition"
+            title="Generate and view complete summary PDF report for board presentation"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Board Summary PDF</span>
+          </button>
+
+          {dashboardSubTab === 'OVERVIEW' && (
+            <div className="text-xs text-slate-400 font-mono hidden md:block">
+              Net Balance: <strong className="text-white">{formatBDT(financials.netSocietyBalance)}</strong>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Conditional Sub-module Rendering */}
+      {dashboardSubTab === 'BUDGET_VARIANCE' ? (
+        <AnnualBudgetVarianceSubModule expenses={expenses} currentUser={currentUser} />
+      ) : dashboardSubTab === 'EXPENSE_FORECAST' ? (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <ExpenseForecastChart expenses={expenses} incomes={incomes} />
+        </div>
+      ) : (
+        <>
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -188,6 +277,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
       {/* Recharts Monthly Trend Analysis Growth Component */}
       <FinancialTrendChart incomes={incomes} expenses={expenses} />
+
+      {/* Recharts Predictive Expense Forecasting & Runway Modeling Component */}
+      <ExpenseForecastChart expenses={expenses} incomes={incomes} />
 
       {/* D3.js Chart: Outstanding Member Dues vs Projected Monthly Income (Cash Flow Gap Visualization) */}
       <CashFlowGapD3Chart
@@ -363,6 +455,18 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
+
+      {/* Board Presentation Summary PDF Modal */}
+      <BoardPresentationPDFModal
+        isOpen={showBoardPDFModal}
+        onClose={() => setShowBoardPDFModal(false)}
+        incomes={incomes}
+        expenses={expenses}
+        members={members}
+        currentUser={currentUser}
+      />
     </div>
   );
 };

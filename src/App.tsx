@@ -19,7 +19,9 @@ import { InfoCommunicationView } from './components/InfoCommunicationView';
 import { AuditLogView } from './components/AuditLogView';
 import { BackupSyncView } from './components/BackupSyncView';
 import { UserProfileView } from './components/UserProfileView';
+import { ForcePasswordChangeModal } from './components/ForcePasswordChangeModal';
 import { PrintStatementModal } from './components/PrintStatementModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { MemberFinancialSummary } from './utils/calculations';
 
 export default function App() {
@@ -99,10 +101,20 @@ export default function App() {
     return <LoginScreen />;
   }
 
+  const isPasswordChangeRequired =
+    currentUser.requiresPasswordChange ||
+    storageService.isPasswordChangeRequired(currentUser.username) ||
+    (currentUser.memberId ? storageService.isPasswordChangeRequired(currentUser.memberId) : false);
+
   const isMember = currentUser.role === 'MEMBER';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+      {/* Forced Password Change Checkpoint for First-Time Login */}
+      {isPasswordChangeRequired && (
+        <ForcePasswordChangeModal currentUser={currentUser} />
+      )}
+
       {/* Top Application Header */}
       <Header
         currentUser={currentUser}
@@ -156,6 +168,7 @@ export default function App() {
             currentUser={currentUser}
             initialMemberId={drilldownMemberId}
             onPrintStatement={handlePrintMemberStatement}
+            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         )}
 
@@ -223,6 +236,8 @@ export default function App() {
         incomeEntry={printIncomeEntry}
         expenseEntry={printExpenseEntry}
       />
+      {/* Offline Status & Instant Sync Indicator */}
+      <OfflineIndicator currentUser={currentUser} />
     </div>
   );
 }

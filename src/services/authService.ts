@@ -118,6 +118,34 @@ class AuthService {
       const data = localStorage.getItem(AUTH_STORAGE_KEY);
       if (data) {
         this.currentUser = JSON.parse(data);
+        if (this.currentUser) {
+          // Sync photo with member or official record
+          if (this.currentUser.memberId) {
+            const m = storageService.getMemberById(this.currentUser.memberId);
+            if (m) {
+              this.currentUser.photoUrl = m.photoUrl;
+              this.currentUser.photoStatus = m.photoStatus;
+              this.currentUser.pendingPhotoUrl = m.pendingPhotoUrl;
+            }
+          } else {
+            const officials = storageService.getOfficials();
+            const off = officials.find(
+              (o) =>
+                o.username.toLowerCase() === this.currentUser?.username.toLowerCase() ||
+                o.id === this.currentUser?.id
+            );
+            if (off) {
+              this.currentUser.photoUrl = off.photoUrl;
+              this.currentUser.photoStatus = off.photoStatus;
+            }
+          }
+
+          const requiresChange =
+            storageService.isPasswordChangeRequired(this.currentUser.username) ||
+            (this.currentUser.memberId ? storageService.isPasswordChangeRequired(this.currentUser.memberId) : false);
+          this.currentUser.requiresPasswordChange = requiresChange;
+          this.currentUser.hasChangedDefaultPassword = !requiresChange;
+        }
       } else {
         this.currentUser = null;
       }
@@ -127,7 +155,36 @@ class AuthService {
   }
 
   public getCurrentUser(): User | null {
+    if (this.currentUser) {
+      if (this.currentUser.memberId) {
+        const m = storageService.getMemberById(this.currentUser.memberId);
+        if (m) {
+          this.currentUser.photoUrl = m.photoUrl;
+          this.currentUser.photoStatus = m.photoStatus;
+          this.currentUser.pendingPhotoUrl = m.pendingPhotoUrl;
+        }
+      } else {
+        const officials = storageService.getOfficials();
+        const off = officials.find(
+          (o) =>
+            o.username.toLowerCase() === this.currentUser?.username.toLowerCase() ||
+            o.id === this.currentUser?.id
+        );
+        if (off) {
+          this.currentUser.photoUrl = off.photoUrl;
+          this.currentUser.photoStatus = off.photoStatus;
+        }
+      }
+    }
     return this.currentUser;
+  }
+
+  public updateCurrentUserPhoto(photoUrl: string, photoStatus: 'AUTHORIZED' | 'PENDING_AUTHORIZATION' | 'REJECTED') {
+    if (!this.currentUser) return;
+    this.currentUser.photoUrl = photoUrl;
+    this.currentUser.photoStatus = photoStatus;
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(this.currentUser));
+    this.notify();
   }
 
   public login(usernameInput: string, passwordInput: string): { success: boolean; message: string; user?: User } {
@@ -138,17 +195,27 @@ class AuthService {
       return { success: false, message: 'Please enter your Username or Member ID.' };
     }
 
-    // Initial default password is "12345679" for all users
+    // Check if user account is locked
+    if (storageService.isUserLocked(username)) {
+      return {
+        success: false,
+        message: 'ACCOUNT LOCKED: This account has been locked by administration. Please contact the System Admin or Delegated Admin to unlock your account.',
+      };
+    }
+
+    // Passwords check: user-specific password, system default password set by System Admin, or root password
     const storedPass = storageService.getUserPassword(username);
+    const systemDefault = storageService.getSystemDefaultPassword();
     const isPassValid =
       password === storedPass ||
+      password === systemDefault ||
       password === '12345679' ||
       ((username.toLowerCase() === 'ssakil' || username.toUpperCase() === 'PHSM-001') && password === 'Sarah@14#2014');
 
     if (!isPassValid) {
       return {
         success: false,
-        message: 'Invalid password. (Initial default password for all users is: 12345679)',
+        message: `Invalid password. (System default password is: ${systemDefault})`,
       };
     }
 
@@ -177,8 +244,7 @@ class AuthService {
         ecDesignation: 'President',
         monthlyHonorariumBDT: 35000,
       };
-      this.setUser(adminUser);
-      return { success: true, message: 'Welcome Saif Ahmed Sakil (President & Root System Admin)', user: adminUser };
+      return this.trySetUser(adminUser, 'Welcome Saif Ahmed Sakil (President & Root System Admin)');
     }
 
     // 2. Delegated Admin Directors:
@@ -231,8 +297,7 @@ class AuthService {
         ecDesignation: dInfo.ecDesignation || 'None',
         monthlyHonorariumBDT: dInfo.honorarium,
       };
-      this.setUser(delegatedUser);
-      return { success: true, message: `Welcome Director ${dInfo.name} (Delegated Admin)`, user: delegatedUser };
+      return this.trySetUser(delegatedUser, `Welcome Director ${dInfo.name} (Delegated Admin)`);
     }
 
     // 3. Official Staff Users (Manager, DyM, AistM, Accounts Officer, etc. created by System Admin)
@@ -254,14 +319,12 @@ class AuthService {
         officialDesignation: matchedOfficial.designation,
         isEmpoweredForEntry: matchedOfficial.isEmpoweredForEntry,
       };
-      this.setUser(officialUser);
-      return {
-        success: true,
-        message: `Welcome ${matchedOfficial.name} (${matchedOfficial.designation}) [Entry: ${
+      return this.trySetUser(
+        officialUser,
+        `Welcome ${matchedOfficial.name} (${matchedOfficial.designation}) [Entry: ${
           matchedOfficial.isEmpoweredForEntry ? 'Empowered' : 'Restricted'
-        }]`,
-        user: officialUser,
-      };
+        }]`
+      );
     }
 
     if (username.toLowerCase() === 'manager2') {
@@ -275,8 +338,7 @@ class AuthService {
         department: 'Accounts & Operations',
         isEmpoweredForEntry: true,
       };
-      this.setUser(managerUser);
-      return { success: true, message: `Welcome ${managerUser.name}`, user: managerUser };
+      return this.trySetUser(managerUser, `Welcome ${managerUser.name}`);
     }
 
     // 4. Member ID: PHSM-001 to PHSM-144, member1 to member144, share1 to share144, or bare number 1-144
@@ -307,8 +369,7 @@ class AuthService {
         phone: memberObj?.phone || '+8801700000000',
         email: memberObj?.email || `${formattedId.toLowerCase()}@prottasha.org`,
       };
-      this.setUser(memberUser);
-      return { success: true, message: `Welcome Shareholder ${memberUser.name} (${formattedId})`, user: memberUser };
+      return this.trySetUser(memberUser, `Welcome Shareholder ${memberUser.name} (${formattedId})`);
     }
 
     return {
@@ -317,12 +378,40 @@ class AuthService {
     };
   }
 
+  private trySetUser(user: User, welcomeMessage: string): { success: boolean; message: string; user?: User } {
+    try {
+      this.setUser(user);
+      return { success: true, message: welcomeMessage, user };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Login failed.' };
+    }
+  }
+
   public loginAsPersona(username: string): boolean {
-    const result = this.login(username, '12345679');
+    const sysDefault = storageService.getSystemDefaultPassword();
+    const result = this.login(username, sysDefault);
     return result.success;
   }
 
   private setUser(user: User) {
+    // Prevent logging in if user or member account is locked
+    const isLocked =
+      storageService.isUserLocked(user.username) ||
+      (user.memberId ? storageService.isUserLocked(user.memberId) : false) ||
+      storageService.isUserLocked(user.id);
+
+    if (isLocked) {
+      throw new Error('ACCOUNT LOCKED: This account has been locked by administration. Please contact the System Admin or Delegated Admin to unlock your account.');
+    }
+
+    const requiresChange =
+      storageService.isPasswordChangeRequired(user.username) ||
+      (user.memberId ? storageService.isPasswordChangeRequired(user.memberId) : false);
+
+    user.requiresPasswordChange = requiresChange;
+    user.hasChangedDefaultPassword = !requiresChange;
+    user.isLocked = false;
+
     this.currentUser = user;
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
     storageService.logAudit(
@@ -333,6 +422,22 @@ class AuthService {
       `User ${user.name} logged in with role ${user.role}`
     );
     this.notify();
+  }
+
+  public completePasswordChange(newPassword: string): { success: boolean; message: string } {
+    if (!this.currentUser) {
+      return { success: false, message: 'No active user session.' };
+    }
+    try {
+      const res = storageService.changeUserPassword(this.currentUser.username, newPassword, this.currentUser);
+      this.currentUser.requiresPasswordChange = false;
+      this.currentUser.hasChangedDefaultPassword = true;
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(this.currentUser));
+      this.notify();
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to update password.' };
+    }
   }
 
   public logout() {

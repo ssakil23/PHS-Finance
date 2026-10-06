@@ -20,10 +20,18 @@ import {
   ShieldAlert,
   Vote,
   Cloud,
+  KeyRound,
+  Lock,
+  CheckCircle,
+  AlertCircle,
+  Database,
+  Globe,
+  Download,
 } from 'lucide-react';
 import { User } from '../types';
 import { authService } from '../services/authService';
 import { storageService } from '../services/storageService';
+import { PeriodicPasswordModal } from './PeriodicPasswordModal';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -41,8 +49,50 @@ export const Header: React.FC<HeaderProps> = ({
   const [lastSync, setLastSync] = useState<string>(storageService.getLastSyncTime());
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [showSelfPassModal, setShowSelfPassModal] = useState<boolean>(false);
+  const [showPeriodicPassModal, setShowPeriodicPassModal] = useState<boolean>(false);
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [passError, setPassError] = useState<string>('');
+  const [passSuccess, setPassSuccess] = useState<string>('');
 
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSelfPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError('');
+    setPassSuccess('');
+    if (!currentUser) return;
+
+    if (newPassword.trim().length < 6) {
+      setPassError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    const sysDefault = storageService.getSystemDefaultPassword();
+    if (newPassword.trim() === sysDefault || newPassword.trim() === '12345679') {
+      setPassError(`For security, your new password cannot be the default password (${sysDefault}).`);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPassError('Confirmation password does not match.');
+      return;
+    }
+
+    try {
+      const res = storageService.changeUserPassword(currentUser.username, newPassword.trim(), currentUser);
+      setPassSuccess(res.message);
+      setTimeout(() => {
+        setShowSelfPassModal(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        setPassSuccess('');
+      }, 1500);
+    } catch (err: any) {
+      setPassError(err.message || 'Failed to update password.');
+    }
+  };
 
   // Auto-fold menu on click outside or Escape key
   useEffect(() => {
@@ -81,6 +131,27 @@ export const Header: React.FC<HeaderProps> = ({
       storageService.updateLastSyncTime();
       setIsSyncing(false);
     }, 600);
+  };
+
+  const handleQuickBackup = () => {
+    if (!currentUser) return;
+    try {
+      const jsonStr = storageService.createDatabaseBackupJSON(currentUser);
+      const hostName = typeof window !== 'undefined' ? window.location.hostname : 'domain';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `PHS_Finance_DOMAIN_MIGRATION_MASTER_BACKUP_${hostName}_${timestamp}.json`;
+
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e: any) {
+      console.error('Backup download error:', e);
+    }
   };
 
   const isMember = currentUser?.role === 'MEMBER';
@@ -165,8 +236,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 text-slate-400">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span className="font-medium text-slate-200">Prottasha Housing Society Ltd.</span>
-          <span className="hidden sm:inline text-slate-600">|</span>
-          <span className="hidden sm:inline text-slate-400">144 Allocated Share Registry & Central Accounts</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -350,6 +419,22 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* User Profile & Actions */}
           <div className="flex items-center gap-3">
+            {/* System Admin Periodic Initial Password Quick Button */}
+            {currentUser?.role === 'SYSTEM_ADMIN' && (
+              <button
+                onClick={() => setShowPeriodicPassModal(true)}
+                title="System Admin Authority: Set Initial Password Periodically for All Users"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-950/90 to-amber-900/70 hover:from-amber-900 hover:to-amber-800 text-amber-200 border border-amber-600/70 rounded-lg text-xs font-semibold shadow transition"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden md:inline">Initial Pass:</span>
+                <strong className="font-mono text-white">{storageService.getSystemDefaultPassword()}</strong>
+                {storageService.getPeriodicPasswordStatus().isOverdue && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                )}
+              </button>
+            )}
+
             {currentUser && (
               <div className="flex items-center gap-2.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/80">
                 <button
@@ -377,10 +462,34 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </button>
 
+                {currentUser.role === 'SYSTEM_ADMIN' && (
+                  <button
+                    onClick={handleQuickBackup}
+                    title="Export Complete System Backup (.json) for Domain/Hosting Migration"
+                    className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-700/60 rounded transition-colors"
+                  >
+                    <Database className="w-4 h-4" />
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setPassError('');
+                    setPassSuccess('');
+                    setShowSelfPassModal(true);
+                  }}
+                  title="Modify / Change My Password"
+                  className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 rounded transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" />
+                </button>
+
                 <button
                   onClick={() => authService.logout()}
                   title="Sign out"
-                  className="ml-1 p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 rounded transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 rounded transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -422,6 +531,113 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Self Password Change Modal Dialog */}
+      {showSelfPassModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <span>Modify My Password</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSelfPassModal(false);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setPassError('');
+                  setPassSuccess('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              As <strong>{currentUser?.name}</strong>, you can update your security password anytime. Your changes will take effect immediately.
+            </p>
+
+            {passError && (
+              <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{passError}</span>
+              </div>
+            )}
+
+            {passSuccess && (
+              <div className="p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>{passSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSelfPasswordSubmit} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-semibold">New Personal Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-amber-500"
+                    placeholder="Min 6 characters"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-semibold">Confirm New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-amber-500"
+                    placeholder="Repeat new password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSelfPassModal(false)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg shadow"
+                >
+                  Update My Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Periodic Password Modal for System Admin */}
+      {showPeriodicPassModal && currentUser?.role === 'SYSTEM_ADMIN' && (
+        <PeriodicPasswordModal
+          isOpen={showPeriodicPassModal}
+          onClose={() => setShowPeriodicPassModal(false)}
+          currentUser={currentUser}
+          onSuccess={(msg) => {
+            // Success feedback
+          }}
+        />
       )}
     </header>
   );

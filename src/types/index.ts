@@ -31,6 +31,9 @@ export interface ProfileUpdateRequest {
   proposedSpouseName?: string;
   proposedSpouseMobile?: string;
   proposedEmergencyContact?: string;
+  proposedPhotoUrl?: string; // 2x2 passport photo data URL
+  currentPhotoUrl?: string;
+  isPhotoOnly?: boolean;
   requestedAt: string;
   requestedBy: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -55,6 +58,18 @@ export interface Member {
   officialDesignation?: string;
   isEmpoweredForEntry?: boolean;
   
+  // 2x2 Passport Photo fields
+  photoUrl?: string; // 2x2 passport photo data URL (1:1 ratio)
+  photoStatus?: 'AUTHORIZED' | 'PENDING_AUTHORIZATION' | 'REJECTED';
+  photoAuthorizedBy?: string;
+  photoAuthorizedByName?: string;
+  photoAuthorizedAt?: string;
+  photoUpdatedBy?: string;
+  photoUpdatedAt?: string;
+  photoRejectReason?: string;
+  pendingPhotoUrl?: string; // photo awaiting official / admin authorization
+  pendingPhotoRequestedAt?: string;
+
   // Member demographic & contact fields
   nidOrBirthId?: string;
   dob?: string; // YYYY-MM-DD
@@ -78,6 +93,7 @@ export interface Member {
     spouseName?: string;
     spouseMobile?: string;
     emergencyContact?: string;
+    proposedPhotoUrl?: string;
     requestedAt: string;
   };
 }
@@ -150,6 +166,7 @@ export interface ExpenseEntry {
     | 'EC Honorarium'
     | 'Others'
     | string;
+  subCategory?: string;
   date: string; // YYYY-MM-DD
   time?: string;
   tier?: TransactionTier; // Tier-1 to Tier-5
@@ -187,6 +204,11 @@ export interface OfficialUser {
   createdAt: string;
   createdBy: string;
   status: 'ACTIVE' | 'INACTIVE';
+  photoUrl?: string; // 2x2 passport photo data URL
+  photoStatus?: 'AUTHORIZED' | 'PENDING_AUTHORIZATION' | 'REJECTED';
+  photoAuthorizedBy?: string;
+  photoAuthorizedByName?: string;
+  photoAuthorizedAt?: string;
 }
 
 export interface User {
@@ -205,6 +227,62 @@ export interface User {
   isEmpoweredForEntry?: boolean; // Empowered by System Admin
   ecDesignation?: 'President' | 'VICE PRESIDENT (VP)' | 'Vice President' | 'General Secretary' | 'TREASURER' | 'Treasurer' | 'MEMBER' | 'EC Member' | 'None' | string;
   monthlyHonorariumBDT?: number;
+  requiresPasswordChange?: boolean;
+  hasChangedDefaultPassword?: boolean;
+  isLocked?: boolean;
+  lockedReason?: string;
+  lockedAt?: string;
+  lockedBy?: string;
+  photoUrl?: string; // 2x2 passport photo data URL
+  photoStatus?: 'AUTHORIZED' | 'PENDING_AUTHORIZATION' | 'REJECTED';
+  photoAuthorizedBy?: string;
+  photoAuthorizedByName?: string;
+  photoAuthorizedAt?: string;
+  pendingPhotoUrl?: string;
+}
+
+export interface BudgetCategoryTarget {
+  category: string;
+  targetAmountBDT: number; // in BDT
+  notes?: string;
+}
+
+export interface AnnualBudget {
+  id: string; // e.g., 'BUDGET-FY-2025-2026'
+  fiscalYear: string; // e.g., '2025-2026'
+  title: string;
+  totalBudgetTargetBDT: number;
+  categoryTargets: BudgetCategoryTarget[];
+  status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
+  approvedByBoard: boolean;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+}
+
+export interface BudgetVarianceItem {
+  category: string;
+  budgetTargetBDT: number;
+  targetAmountBDT?: number;
+  actualExpenseBDT: number;
+  varianceBDT: number; // target - actual (positive = under budget / surplus, negative = over budget / deficit)
+  variancePercentage: number;
+  utilizationRate: number; // (actual / budget) * 100
+  status: 'UNDER_BUDGET' | 'ON_TRACK' | 'OVER_BUDGET';
+}
+
+export interface AnnualBudgetVarianceReport {
+  fiscalYear: string;
+  totalBudgetTargetBDT: number;
+  totalActualExpenseBDT: number;
+  netVarianceBDT: number;
+  overallUtilizationRate: number;
+  favorableCategoriesCount: number;
+  unfavorableCategoriesCount: number;
+  items: BudgetVarianceItem[];
 }
 
 export interface AuditLog {
@@ -225,8 +303,12 @@ export interface AuditLog {
     | 'EC_VOTE' 
     | 'HONORARIUM_UPDATE'
     | 'MEMBER_UPDATE'
+    | 'LOCK_USER'
+    | 'UNLOCK_USER'
+    | 'PASSWORD_RESET'
+    | 'BUDGET_UPDATE'
     | 'LOGIN';
-  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY';
+  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET';
   entityId: string;
   details: string;
   ipAddress?: string;
@@ -389,3 +471,92 @@ export interface ExecutiveCommittee {
   termYear: string;
   lastUpdated: string;
 }
+
+export interface OverduePaymentAlert {
+  id: string; // e.g. 'ALERT-OD-2026-001'
+  memberId: string;
+  memberName: string;
+  shareNumber: number;
+  controllingDirectorName: string;
+  overdueAmountBDT: number;
+  memberPersonalDepositBDT: number;
+  memberShareExpenseBDT: number;
+  sentAt: string;
+  sentBy: string; // Name of sender (Admin/Director)
+  sentByRole: UserRole | string;
+  channel: 'INFO_COMMUNICATION_VIEW';
+  status: 'DISPATCHED' | 'ACKNOWLEDGED' | 'RESOLVED';
+  queryId?: string; // ID of Query ticket in InfoCommunicationView
+  documentId?: string; // ID of official Notice Document in InfoCommunicationView
+  noticeText: string;
+}
+
+export interface SocietySummaryReportData {
+  fiscalYear?: string;
+  incomes: IncomeEntry[];
+  expenses: ExpenseEntry[];
+  members: Member[];
+  currentUser?: User | null;
+  annualBudget?: AnnualBudget;
+  reportDate?: string;
+}
+
+export type PeriodicPasswordInterval = 30 | 60 | 90 | 180 | 365 | 0;
+
+export interface PeriodicPasswordHistoryItem {
+  id: string;
+  timestamp: string;
+  setByName: string;
+  setByIdentifier: string;
+  initialPasswordPreview: string;
+  initialPasswordValue: string;
+  rotationFrequencyDays: number;
+  appliedScope: 'ALL_USERS_EXCEPT_ROOT' | 'ALL_MEMBERS' | 'OFFICIALS_ONLY' | 'SYSTEM_DEFAULT_ONLY';
+  affectedUsersCount: number;
+  status: 'APPLIED_AND_FORCED_CHANGE' | 'POLICY_UPDATED';
+  remarks?: string;
+}
+
+export interface PeriodicPasswordPolicy {
+  initialPassword: string;
+  rotationFrequencyDays: number; // 30, 60, 90, 180, 365, or 0 (Manual)
+  lastRotatedAt: string; // ISO date
+  nextRotationDue: string; // ISO date
+  lastRotatedByName: string;
+  lastRotatedById: string;
+  forcePasswordChangeOnLogin: boolean; // default true
+  rotationCycleName: string;
+  history: PeriodicPasswordHistoryItem[];
+}
+
+export interface PeriodicPasswordStatus {
+  isOverdue: boolean;
+  daysRemaining: number;
+  daysOverdue: number;
+  nextDueDate: string;
+  lastRotatedDate: string;
+  frequencyLabel: string;
+}
+
+export interface SystemSnapshotRecord {
+  id: string;
+  timestamp: string;
+  label: string;
+  createdByName: string;
+  createdByRole: string;
+  sourceDomain: string;
+  totalRecordsCount: number;
+  dataSizeKB: number;
+  checksum: string;
+  entityBreakdown: {
+    members: number;
+    incomes: number;
+    expenses: number;
+    officials: number;
+    budgets: number;
+    documents: number;
+    passwords: number;
+  };
+  jsonPayload: string;
+}
+

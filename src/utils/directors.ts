@@ -188,6 +188,67 @@ export const EMERGENCY_RELATIONS = [
   'Brother', 'Brother', 'Son', 'Spouse', 'Cousin', 'Uncle', 'Sister', 'Friend'
 ];
 
+export interface SamplePassportPhoto {
+  id: string;
+  label: string;
+  url: string;
+}
+
+export const SAMPLE_PASSPORT_PHOTOS: SamplePassportPhoto[] = [
+  {
+    id: 'sample-president',
+    label: 'Executive Formal (Suit & Tie)',
+    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-vp',
+    label: 'Corporate Director (Dark Blazer)',
+    url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-gs',
+    label: 'Senior Official (Glasses, Formal)',
+    url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-treasurer',
+    label: 'Finance Executive (Formal Shirt)',
+    url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-engr',
+    label: 'Professional Engineer (Modern Headshot)',
+    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-female-lead',
+    label: 'Executive Woman (White Backdrop)',
+    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-officer',
+    label: 'Accounts Officer (Studio Portrait)',
+    url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+  {
+    id: 'sample-member',
+    label: 'General Shareholder (Clean Passport Spec)',
+    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&h=400&q=80',
+  },
+];
+
+const SEED_MEMBER_PHOTOS: Record<number, string> = {
+  1: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&h=400&q=80', // Saif Ahmed Sakil (President)
+  7: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&h=400&q=80', // Engr. Tanvir Ahmed (Shareholder #7)
+  21: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&h=400&q=80', // M Masud Sawdagor (General Secretary)
+  49: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&h=400&q=80', // M Omar Faruque Molla (Vice President)
+  56: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&h=400&q=80', // Shahin Ahmed
+  71: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&h=400&q=80', // Abul Hashim
+  88: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&h=400&q=80', // Sirajul Islam (Treasurer)
+  95: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&h=400&q=80', // M Abu Yousuf
+  102: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&h=400&q=80', // Faizan Ahmed
+};
+
 /**
  * Enriches any member object with authentic demographic and contact information
  */
@@ -292,6 +353,12 @@ export function ensureMemberDemographics(m: Member): Member {
     emergencyContact = emergencyContact || `+88018${String(30000000 + share * 5137).slice(0, 8)} (${rel})`;
   }
 
+  const seedPhoto = m.photoUrl || SEED_MEMBER_PHOTOS[share];
+  const photoStatus = seedPhoto ? (m.photoStatus || 'AUTHORIZED') : undefined;
+  const photoAuthorizedBy = seedPhoto ? (m.photoAuthorizedBy || 'SAIF AHMED SAKIL') : undefined;
+  const photoAuthorizedByName = seedPhoto ? (m.photoAuthorizedByName || 'Saif Ahmed Sakil (President)') : undefined;
+  const photoAuthorizedAt = seedPhoto ? (m.photoAuthorizedAt || '2026-01-15T10:00:00.000Z') : undefined;
+
   return {
     ...m,
     address: currAddress,
@@ -303,6 +370,11 @@ export function ensureMemberDemographics(m: Member): Member {
     spouseName,
     spouseMobile,
     emergencyContact,
+    photoUrl: seedPhoto,
+    photoStatus,
+    photoAuthorizedBy,
+    photoAuthorizedByName,
+    photoAuthorizedAt,
   };
 }
 

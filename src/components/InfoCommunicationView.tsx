@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  AlertTriangle,
   Search,
   Filter,
   Image as ImageIcon,
@@ -420,6 +421,26 @@ Saif Ahmed Sakil, System Administrator (ISRT, DU)
 
   const openQueriesCount = queries.filter((q) => q.status === 'OPEN').length;
 
+  const overdueQueriesCount = useMemo(() => {
+    return queries.filter(
+      (q) =>
+        (q.subject.toLowerCase().includes('overdue') || q.subject.includes('DEMAND')) &&
+        q.status !== 'RESOLVED'
+    ).length;
+  }, [queries]);
+
+  // If active user is Member, check if they have an active overdue demand query
+  const myOverdueDemandQuery = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'MEMBER') return null;
+    const memberId = currentUser.memberId || currentUser.id;
+    return queries.find(
+      (q) =>
+        (q.memberId === memberId || (currentUser.shareNumber && q.shareNumber === currentUser.shareNumber)) &&
+        (q.subject.toLowerCase().includes('overdue') || q.subject.includes('DEMAND')) &&
+        q.status !== 'RESOLVED'
+    );
+  }, [queries, currentUser]);
+
   return (
     <div className="space-y-6">
       {/* ==================== MODULE TOP BANNER ==================== */}
@@ -467,6 +488,31 @@ Saif Ahmed Sakil, System Administrator (ISRT, DU)
           </div>
         </div>
       </div>
+
+      {/* Member Overdue Payment Demand Banner */}
+      {myOverdueDemandQuery && (
+        <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-rose-950 border-2 border-rose-600 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 animate-pulse" />
+            <div>
+              <div className="font-bold text-white text-sm flex items-center gap-2">
+                <span>Official Overdue Payment Demand Notice Active</span>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-rose-900 text-rose-200 border border-rose-700">Action Required</span>
+              </div>
+              <p className="text-rose-200/90 mt-0.5">{myOverdueDemandQuery.subject}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setActiveSubModule('QUERY_WINDOW');
+              setQueryCategoryFilter('ALL');
+            }}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold shrink-0 shadow transition"
+          >
+            Review Demand Notice
+          </button>
+        </div>
+      )}
 
       {/* ==================== SUB-MODULE NAVIGATION TABS ==================== */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 flex flex-wrap items-center justify-between gap-2 shadow-md">
@@ -526,11 +572,15 @@ Saif Ahmed Sakil, System Administrator (ISRT, DU)
           >
             <HelpCircle className="w-4 h-4" />
             <span>Query Window</span>
-            {openQueriesCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950 animate-pulse">
+            {overdueQueriesCount > 0 ? (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-rose-500 text-white animate-pulse">
+                {overdueQueriesCount} Overdue
+              </span>
+            ) : openQueriesCount > 0 ? (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950">
                 {openQueriesCount} Open
               </span>
-            )}
+            ) : null}
           </button>
         </div>
 
@@ -1065,21 +1115,31 @@ Saif Ahmed Sakil, System Administrator (ISRT, DU)
               const isOpen = q.status === 'OPEN';
               const isInReview = q.status === 'IN_REVIEW';
               const isResolved = q.status === 'RESOLVED';
+              const isOverdueNotice =
+                q.subject.toLowerCase().includes('overdue') || q.subject.includes('DEMAND');
 
               return (
                 <div
                   key={q.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4 hover:border-slate-700 transition"
+                  className={`bg-slate-900 border rounded-2xl p-5 shadow-lg space-y-4 hover:border-slate-700 transition ${
+                    isOverdueNotice ? 'border-rose-600/70 bg-slate-900/95 shadow-rose-950/30' : 'border-slate-800'
+                  }`}
                 >
                   {/* Top Bar */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
                         {q.id}
                       </span>
                       <span className="text-xs font-semibold text-white">
                         {q.submitterName} {q.shareNumber ? `(Share #${q.shareNumber})` : ''}
                       </span>
+                      {isOverdueNotice && (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-rose-400" />
+                          <span>Official Overdue Demand</span>
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-400">
                         {new Date(q.submittedAt).toLocaleString()}
                       </span>

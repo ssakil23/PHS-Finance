@@ -34,10 +34,17 @@ import {
   Heart,
   PhoneCall,
   ExternalLink,
+  Globe,
+  Database,
+  HardDrive,
+  Camera,
+  CheckCircle2,
 } from 'lucide-react';
 import { User, Member, ProfileUpdateRequest, OfficialUser } from '../types';
 import { storageService } from '../services/storageService';
 import { authService } from '../services/authService';
+import { PeriodicPasswordModal } from './PeriodicPasswordModal';
+import { PassportPhotoModal } from './PassportPhotoModal';
 
 interface UserProfileViewProps {
   currentUser: User | null;
@@ -63,8 +70,29 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     role: string;
     isSakil: boolean;
   } | null>(null);
-  const [newPasswordInput, setNewPasswordInput] = useState('12345679');
+  const [newPasswordInput, setNewPasswordInput] = useState(storageService.getSystemDefaultPassword());
   const [resetFeedback, setResetFeedback] = useState<{ error?: string; success?: string }>({});
+
+  // System Default Password State (Configured by System Admin)
+  const [sysDefaultPass, setSysDefaultPass] = useState(storageService.getSystemDefaultPassword());
+  const [showSysDefaultModal, setShowSysDefaultModal] = useState(false);
+  const [newSysDefaultInput, setNewSysDefaultInput] = useState(storageService.getSystemDefaultPassword());
+  const [showPeriodicPasswordModal, setShowPeriodicPasswordModal] = useState(false);
+  const [periodicStatus, setPeriodicStatus] = useState(() => storageService.getPeriodicPasswordStatus());
+
+  // User Lock / Unlock State (System Admin & Delegated Admin)
+  const [lockModalOpen, setLockModalOpen] = useState(false);
+  const [lockTarget, setLockTarget] = useState<{ id: string; name: string; identifier: string } | null>(null);
+  const [lockReasonInput, setLockReasonInput] = useState('Account stuck / security verification hold');
+  const [lockedUsersMap, setLockedUsersMap] = useState<Record<string, any>>(storageService.getLockedUsers());
+
+  // Self Password Change State
+  const [showSelfPasswordModal, setShowSelfPasswordModal] = useState(false);
+  const [selfNewPass, setSelfNewPass] = useState('');
+  const [selfConfirmPass, setSelfConfirmPass] = useState('');
+  const [showSelfPass, setShowSelfPass] = useState(false);
+  const [selfPassError, setSelfPassError] = useState('');
+  const [selfPassSuccess, setSelfPassSuccess] = useState('');
 
   // Officials Management State
   const [showAddOfficialModal, setShowAddOfficialModal] = useState(false);
@@ -122,16 +150,86 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [modSpouseMobile, setModSpouseMobile] = useState('');
   const [modEmergencyContact, setModEmergencyContact] = useState('');
 
+  // 2x2 Passport Photo State
+  const [showPassportModal, setShowPassportModal] = useState(false);
+  const [passportTargetMember, setPassportTargetMember] = useState<Member | null>(null);
+  const [passportTargetOfficial, setPassportTargetOfficial] = useState<string | undefined>(undefined);
+  const [pendingPhotos, setPendingPhotos] = useState<Member[]>(() => storageService.getPendingPhotoAuthorizations());
+  const [photoFilterTab, setPhotoFilterTab] = useState<'ALL' | 'WITH_PHOTO' | 'WITHOUT_PHOTO'>('ALL');
+
+  // Photo Reject Modal State
+  const [rejectingPhotoMember, setRejectingPhotoMember] = useState<Member | null>(null);
+  const [photoRejectReasonInput, setPhotoRejectReasonInput] = useState('');
+
   // Notification banners
   const [successBanner, setSuccessBanner] = useState('');
   const [errorBanner, setErrorBanner] = useState('');
 
+  const isOfficialOrAdmin = storageService.isOfficialOrAdmin(currentUser);
   const canApproveAndModify =
-    currentUser?.role === 'SYSTEM_ADMIN' || currentUser?.role === 'DELEGATED_ADMIN';
+    currentUser?.role === 'SYSTEM_ADMIN' || currentUser?.role === 'DELEGATED_ADMIN' || isOfficialOrAdmin;
+
+  // Sync with storage updates
+  React.useEffect(() => {
+    const unsubscribe = storageService.subscribe(() => {
+      setRequests(storageService.getProfileUpdateRequests());
+      setOfficials(storageService.getOfficials());
+      setPendingPhotos(storageService.getPendingPhotoAuthorizations());
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Find member profile if currentUser is a member or has a linked memberId
   const myMemberId = currentUser?.memberId;
-  const myMemberRecord = myMemberId ? members.find((m) => m.id === myMemberId) : null;
+  const myMemberRecord = myMemberId ? (members.find((m) => m.id === myMemberId) || null) : null;
+
+  // Photo Handlers
+  const handleOpenPassportUploadForSelf = () => {
+    setPassportTargetMember(myMemberRecord);
+    setPassportTargetOfficial(currentUser?.role === 'MANAGER' ? currentUser.username : undefined);
+    setShowPassportModal(true);
+  };
+
+  const handleOpenPassportUploadForMember = (target: Member) => {
+    setPassportTargetMember(target);
+    setShowPassportModal(true);
+  };
+
+  const handleAuthorizePhoto = (targetMemberId: string) => {
+    if (!currentUser) return;
+    try {
+      storageService.authorizeMemberPhoto(targetMemberId, true, currentUser);
+      setSuccessBanner(`2×2 Passport photo for ${targetMemberId} authorized and committed.`);
+      setRequests(storageService.getProfileUpdateRequests());
+      setPendingPhotos(storageService.getPendingPhotoAuthorizations());
+      setTimeout(() => setSuccessBanner(''), 3000);
+    } catch (err: any) {
+      setErrorBanner(err.message || 'Failed to authorize photo.');
+      setTimeout(() => setErrorBanner(''), 4000);
+    }
+  };
+
+  const handleExecutePhotoReject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !rejectingPhotoMember) return;
+    try {
+      storageService.authorizeMemberPhoto(
+        rejectingPhotoMember.id,
+        false,
+        currentUser,
+        photoRejectReasonInput.trim() || 'Photo does not meet 2×2 passport specifications'
+      );
+      setSuccessBanner(`2×2 Passport photo for ${rejectingPhotoMember.id} has been rejected.`);
+      setRejectingPhotoMember(null);
+      setPhotoRejectReasonInput('');
+      setRequests(storageService.getProfileUpdateRequests());
+      setPendingPhotos(storageService.getPendingPhotoAuthorizations());
+      setTimeout(() => setSuccessBanner(''), 3000);
+    } catch (err: any) {
+      setErrorBanner(err.message || 'Failed to reject photo.');
+      setTimeout(() => setErrorBanner(''), 4000);
+    }
+  };
 
   // Initialize edit fields
   const handleOpenMyProfileEdit = () => {
@@ -458,7 +556,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     }
 
     setResetTarget({ id, name, identifier, role, isSakil });
-    setNewPasswordInput('12345679');
+    const sysDefault = storageService.getSystemDefaultPassword();
+    setNewPasswordInput(sysDefault);
     setResetFeedback({});
     setResetModalOpen(true);
   };
@@ -482,6 +581,133 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       }, 1600);
     } catch (err: any) {
       setResetFeedback({ error: err.message });
+    }
+  };
+
+  // Configure System Default Password Handler (System Admin only)
+  const handleUpdateSystemDefaultPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || currentUser.role !== 'SYSTEM_ADMIN') return;
+    try {
+      const res = storageService.setSystemDefaultPassword(newSysDefaultInput, currentUser);
+      setSysDefaultPass(newSysDefaultInput.trim());
+      setSuccessBanner(res.message);
+      setShowSysDefaultModal(false);
+      setTimeout(() => setSuccessBanner(''), 4000);
+    } catch (err: any) {
+      setErrorBanner(err.message || 'Failed to update system default password.');
+      setTimeout(() => setErrorBanner(''), 4000);
+    }
+  };
+
+  // User Locking & Unlocking Handlers (System Admin & Delegated Admin)
+  const handleOpenLockUser = (id: string, name: string, identifier: string) => {
+    if (!currentUser) return;
+    const lower = identifier.toLowerCase().trim();
+    const isSakil =
+      lower === 'ssakil' ||
+      lower === 'saif ahmed sakil' ||
+      lower === 'phsm-001' ||
+      lower === 'usr-admin-root' ||
+      name.toLowerCase().includes('sakil');
+
+    if (currentUser.role === 'DELEGATED_ADMIN' && isSakil) {
+      alert('Access Denied: Delegated Admin cannot lock Root System Admin Saif Ahmed Sakil.');
+      return;
+    }
+    setLockTarget({ id, name, identifier });
+    setLockReasonInput('Account stuck / security hold - locked by administration');
+    setLockModalOpen(true);
+  };
+
+  const handleConfirmLockUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !lockTarget) return;
+    try {
+      const res = storageService.lockUser(lockTarget.identifier, lockReasonInput, currentUser);
+      setLockedUsersMap(storageService.getLockedUsers());
+      setSuccessBanner(res.message);
+      setLockModalOpen(false);
+      setLockTarget(null);
+      setTimeout(() => setSuccessBanner(''), 4000);
+    } catch (err: any) {
+      setErrorBanner(err.message);
+      setTimeout(() => setErrorBanner(''), 4000);
+    }
+  };
+
+  const handleUnlockUser = (identifier: string, name: string) => {
+    if (!currentUser) return;
+    try {
+      const res = storageService.unlockUser(identifier, currentUser);
+      setLockedUsersMap(storageService.getLockedUsers());
+      setSuccessBanner(res.message);
+      setTimeout(() => setSuccessBanner(''), 4000);
+    } catch (err: any) {
+      setErrorBanner(err.message);
+      setTimeout(() => setErrorBanner(''), 4000);
+    }
+  };
+
+  const handleExecuteSelfPasswordChange = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSelfPassError('');
+    setSelfPassSuccess('');
+
+    if (!currentUser) return;
+
+    if (selfNewPass.trim().length < 6) {
+      setSelfPassError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    const sysDefault = storageService.getSystemDefaultPassword();
+    if (selfNewPass.trim() === sysDefault || selfNewPass.trim() === '12345679') {
+      setSelfPassError(`For security, your new password cannot be the system default password (${sysDefault}).`);
+      return;
+    }
+
+    if (selfNewPass !== selfConfirmPass) {
+      setSelfPassError('Confirmation password does not match.');
+      return;
+    }
+
+    try {
+      const res = storageService.changeUserPassword(currentUser.username, selfNewPass.trim(), currentUser);
+      setSelfPassSuccess(res.message);
+      setSuccessBanner(res.message);
+      setTimeout(() => {
+        setShowSelfPasswordModal(false);
+        setSelfNewPass('');
+        setSelfConfirmPass('');
+        setSelfPassSuccess('');
+      }, 1500);
+    } catch (err: any) {
+      setSelfPassError(err.message || 'Failed to update password.');
+    }
+  };
+
+  const handleExportDomainMigrationBackup = () => {
+    if (!currentUser) return;
+    try {
+      const jsonStr = storageService.createDatabaseBackupJSON(currentUser);
+      const hostName = typeof window !== 'undefined' ? window.location.hostname : 'domain';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `PHS_Finance_DOMAIN_MIGRATION_MASTER_BACKUP_${hostName}_${timestamp}.json`;
+
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setSuccessBanner('Complete Domain & Hosting Migration Master Backup generated successfully! (Zero data loss guarantee)');
+      setTimeout(() => setSuccessBanner(''), 5000);
+    } catch (err: any) {
+      setErrorBanner(`Backup export failed: ${err.message}`);
     }
   };
 
@@ -631,17 +857,129 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         </div>
       )}
 
+      {/* System Admin Periodic Initial Password Security Banner */}
+      {currentUser?.role === 'SYSTEM_ADMIN' && (
+        <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border border-amber-600/50 rounded-2xl p-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5 sm:mt-0">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-white">Periodic Initial Password Policy:</span>
+                <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/90 px-2 py-0.5 rounded border border-amber-700/80">
+                  {sysDefaultPass}
+                </span>
+                <span className="text-[10px] text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Cycle: {periodicStatus.frequencyLabel}
+                </span>
+                {periodicStatus.isOverdue ? (
+                  <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-700 flex items-center gap-1 animate-pulse">
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                    OVERDUE ({periodicStatus.daysOverdue} days past due)
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700/60">
+                    Next due in {periodicStatus.daysRemaining} days ({new Date(periodicStatus.nextDueDate).toLocaleDateString('en-GB')})
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Root System Admin can rotate the initial password periodically across all 144 member shares and official accounts with forced password change on next login.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowPeriodicPasswordModal(true)}
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs shadow-lg flex items-center gap-2 transition self-start md:self-auto shrink-0"
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Set Initial Password Periodically</span>
+          </button>
+        </div>
+      )}
+
+      {/* System Admin Domain & Hosting Migration Authority Banner */}
+      {currentUser?.role === 'SYSTEM_ADMIN' && (
+        <div className="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-emerald-950/70 border border-emerald-600/50 rounded-2xl p-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-white">Domain & Hosting Migration Authority:</span>
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-700/80">
+                  Zero Data Loss Engine
+                </span>
+                <span className="text-[10px] text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  144 Share Records + Credentials
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                System Admin has the right to take a complete system backup to change domain & hosting from one place to another without losing any data.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            <button
+              onClick={handleExportDomainMigrationBackup}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold rounded-xl text-xs shadow-lg flex items-center gap-2 transition"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Complete System Backup (.json)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* -------------------- TAB 1: MY PROFILE -------------------- */}
       {activeSubTab === 'MY_PROFILE' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Profile Card */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex items-center gap-4 pb-4 border-b border-slate-800">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-xl font-bold shadow-lg">
-                {currentUser?.name.slice(0, 2).toUpperCase()}
+            {/* Profile Card Header with 2x2 Passport Photo */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-slate-800">
+              <div className="relative group shrink-0">
+                {/* 2x2 Square Aspect Ratio Frame (1:1 standard) */}
+                <div className="w-28 h-28 rounded-xl overflow-hidden border-2 border-slate-600 bg-white shadow-xl relative select-none">
+                  {(myMemberRecord?.photoUrl || currentUser?.photoUrl) ? (
+                    <img
+                      src={myMemberRecord?.photoUrl || currentUser?.photoUrl}
+                      alt={currentUser?.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-2 text-center text-slate-400">
+                      <Camera className="w-8 h-8 text-slate-600 mb-1" />
+                      <span className="text-[10px] font-semibold text-slate-400">2" × 2" Passport</span>
+                      <span className="text-[9px] text-slate-500">No Photo</span>
+                    </div>
+                  )}
+
+                  {/* 2"x2" Spec Label */}
+                  <div className="absolute top-1 left-1 bg-slate-950/80 px-1 py-0.2 rounded text-[8px] font-mono text-emerald-400 border border-emerald-500/30">
+                    2"×2"
+                  </div>
+                </div>
+
+                {/* Edit Photo Quick Button overlay */}
+                <button
+                  type="button"
+                  onClick={handleOpenPassportUploadForSelf}
+                  title="Upload / Change 2x2 Passport Photo"
+                  className="absolute -bottom-1 -right-1 p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg border-2 border-slate-900 transition hover:scale-105"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">{currentUser?.name}</h3>
+
+              <div className="text-center sm:text-left flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
+                  <h3 className="text-base font-bold text-white truncate">{currentUser?.name}</h3>
+                </div>
                 <div className="text-xs text-emerald-400 font-mono mt-0.5">
                   Role: {currentUser?.role}
                 </div>
@@ -650,6 +988,49 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     {currentUser.ecDesignation} (EC)
                   </span>
                 )}
+
+                {/* 2x2 Photo Status Pill */}
+                <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
+                  {(myMemberRecord?.photoStatus || currentUser?.photoStatus) === 'AUTHORIZED' ? (
+                    <span
+                      title={
+                        myMemberRecord?.photoAuthorizedByName
+                          ? `Authorized by ${myMemberRecord.photoAuthorizedByName} on ${
+                              myMemberRecord.photoAuthorizedAt
+                                ? new Date(myMemberRecord.photoAuthorizedAt).toLocaleDateString()
+                                : ''
+                            }`
+                          : '2x2 Photo officially authorized'
+                      }
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800"
+                    >
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <span>2×2 Photo Authorized</span>
+                    </span>
+                  ) : (myMemberRecord?.photoStatus || currentUser?.photoStatus) === 'PENDING_AUTHORIZATION' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-800">
+                      <Clock className="w-3 h-3 text-amber-400 animate-pulse" />
+                      <span>Pending Official Authorization</span>
+                    </span>
+                  ) : (myMemberRecord?.photoStatus || currentUser?.photoStatus) === 'REJECTED' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded-full border border-rose-800">
+                      <XCircle className="w-3 h-3 text-rose-400" />
+                      <span>Photo Rejected</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700">
+                      <span>No 2×2 Photo Uploaded</span>
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleOpenPassportUploadForSelf}
+                    className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 underline ml-1"
+                  >
+                    {(myMemberRecord?.photoUrl || currentUser?.photoUrl) ? 'Change Photo' : 'Upload Photo'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -742,19 +1123,85 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-800">
+            <div className="pt-3 border-t border-slate-800 space-y-2">
+              <button
+                type="button"
+                onClick={handleOpenPassportUploadForSelf}
+                className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>
+                  {(myMemberRecord?.photoUrl || currentUser?.photoUrl)
+                    ? 'Update / Change 2×2 Passport Photo'
+                    : 'Upload 2×2 Passport Photo'}
+                </span>
+              </button>
+
               <button
                 onClick={handleOpenMyProfileEdit}
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow"
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700/80 text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center justify-center gap-1.5 shadow"
               >
-                <Edit3 className="w-3.5 h-3.5" />
+                <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{canApproveAndModify ? 'Edit My Details (Admin Direct)' : 'Request Profile Update'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelfNewPass('');
+                  setSelfConfirmPass('');
+                  setSelfPassError('');
+                  setSelfPassSuccess('');
+                  setShowSelfPasswordModal(true);
+                }}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                <span>Change My Password</span>
               </button>
             </div>
           </div>
 
           {/* Edit Form or Pending Request Status */}
           <div className="lg:col-span-2 space-y-4">
+            {/* Show pending photo authorization banner if photo is awaiting approval */}
+            {myMemberRecord?.pendingPhotoUrl && (
+              <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-5 text-xs text-amber-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <Clock className="w-4 h-4" />
+                    <span>2×2 Passport Photo Under Official Authorization</span>
+                  </div>
+                  <span className="text-[10px] font-mono bg-amber-900/60 text-amber-300 px-2 py-0.5 rounded">
+                    Awaiting Official Review
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-300/80 leading-relaxed">
+                  You submitted a new 2×2 passport photo. Society Officials or the System Administrator will inspect the 1:1 framing, neutral background, and facial clarity before authorizing it for the permanent society ledger.
+                </p>
+                <div className="flex items-center gap-4 bg-slate-950/60 p-3 rounded-xl border border-amber-900/50">
+                  <div className="w-20 h-20 rounded-lg overflow-hidden border-2 border-amber-500/70 bg-white shrink-0">
+                    <img
+                      src={myMemberRecord.pendingPhotoUrl}
+                      alt="Pending passport photo"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="space-y-1 text-[11px]">
+                    <div className="text-slate-300 font-semibold">Submitted 2×2 Photo (Pending)</div>
+                    <div className="text-slate-400">
+                      Specification: 1:1 Square Passport Format (2"×2")
+                    </div>
+                    {myMemberRecord.pendingPhotoRequestedAt && (
+                      <div className="text-slate-500 text-[10px]">
+                        Submitted on: {new Date(myMemberRecord.pendingPhotoRequestedAt).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Show pending update notice if user has requested changes */}
             {myMemberRecord?.pendingUpdate && (
               <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-5 text-xs text-amber-200 space-y-3">
@@ -1017,14 +1464,148 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         </div>
       )}
 
-      {/* -------------------- TAB 2: APPROVAL QUEUE (Admin & Delegated Admin) -------------------- */}
+      {/* -------------------- TAB 2: APPROVAL & AUTHORIZATION QUEUE (Officials & Admin) -------------------- */}
       {activeSubTab === 'APPROVAL_QUEUE' && canApproveAndModify && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl space-y-4 p-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl space-y-6 p-6">
+          {/* Section A: 2×2 Passport Photo Authorization Queue */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Camera className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>2×2 Passport Photo Authorization Queue</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                      {pendingPhotos.length} Pending
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Official & Admin Authorization authority for shareholder 2×2 passport photos.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {pendingPhotos.length === 0 ? (
+              <div className="py-6 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+                <CheckCircle2 className="w-6 h-6 text-emerald-500/60" />
+                <span>All shareholder 2×2 passport photos are currently verified & authorized.</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {pendingPhotos.map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 hover:border-slate-700 transition"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                          {pm.id}
+                        </span>
+                        <div>
+                          <span className="font-bold text-white text-sm">{pm.name}</span>
+                          <span className="text-xs text-slate-400 ml-2">Share #{pm.shareNumber} of 144</span>
+                          <span className="text-xs text-emerald-400 ml-2">({pm.controllingDirectorName})</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAuthorizePhoto(pm.id)}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Authorize 2×2 Photo</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRejectingPhotoMember(pm);
+                            setPhotoRejectReasonInput('');
+                          }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Visual Comparison: Current Photo vs Proposed 2x2 Photo */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1">
+                      {/* Current Photo */}
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-white shrink-0 relative">
+                          {pm.photoUrl ? (
+                            <img src={pm.photoUrl} alt="Current photo" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-500 text-[10px]">
+                              No Photo
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                            Current Registered Photo
+                          </span>
+                          <div className="text-slate-300 font-medium">
+                            {pm.photoUrl ? 'Existing Photo' : 'No prior photo registered'}
+                          </div>
+                          {pm.photoAuthorizedByName && (
+                            <div className="text-[10px] text-slate-500">
+                              Prior auth: {pm.photoAuthorizedByName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Proposed New 2x2 Photo */}
+                      <div className="p-3 bg-emerald-950/20 rounded-xl border border-emerald-900/40 flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-emerald-500/80 bg-white shrink-0 relative shadow-md">
+                          {pm.pendingPhotoUrl ? (
+                            <img src={pm.pendingPhotoUrl} alt="Proposed photo" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-500 text-[10px]">
+                              N/A
+                            </div>
+                          )}
+                          <div className="absolute top-0.5 left-0.5 bg-slate-950/80 px-1 py-0.2 rounded text-[7px] font-mono text-emerald-300">
+                            2"×2"
+                          </div>
+                        </div>
+                        <div className="space-y-0.5 flex-1">
+                          <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1">
+                            <span>Proposed 2×2 Passport Photo</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              Pending Review
+                            </span>
+                          </span>
+                          <div className="text-[11px] text-slate-300">
+                            Specification: 1:1 Square Standard Portrait
+                          </div>
+                          <div className="text-[10px] text-emerald-400/90 font-mono">
+                            ✓ Ready for Official Authorization
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section B: Profile Data Requests */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Clock className="w-5 h-5 text-amber-400" />
-                <span>Pending Profile Change Requests ({pendingRequests.length})</span>
+                <span>Pending Profile Information Requests ({pendingRequests.length})</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 Review, modify, or approve contact and address changes submitted by shareholders.
@@ -1198,6 +1779,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                       Member Id
                     </th>
                     <th className="py-3 px-3 whitespace-nowrap">Share#</th>
+                    <th className="py-3 px-3 whitespace-nowrap">2×2 Photo</th>
                     <th className="py-3 px-4 whitespace-nowrap">Full Name</th>
                     <th className="py-3 px-4 whitespace-nowrap">Controlling Director</th>
                     <th className="py-3 px-3.5 whitespace-nowrap">Phone</th>
@@ -1229,6 +1811,49 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                       {/* 2. Share# */}
                       <td className="py-3 px-3 font-mono font-bold text-slate-200 whitespace-nowrap">
                         #{m.shareNumber}
+                      </td>
+
+                      {/* 2×2 Passport Photo */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            onClick={() => setSelectedDossierMember(m)}
+                            className="w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-white shadow-sm flex items-center justify-center cursor-pointer hover:border-emerald-500 transition relative group/avatar shrink-0"
+                            title={`2×2 Passport Photo: ${m.name} (${m.photoStatus || 'No photo uploaded'})`}
+                          >
+                            {m.photoUrl ? (
+                              <img src={m.photoUrl} alt={m.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-[10px] font-bold">
+                                {m.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            {m.photoStatus === 'AUTHORIZED' && (
+                              <span
+                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-1 ring-slate-950 flex items-center justify-center text-[7px] text-slate-950 font-bold"
+                                title="2×2 Photo Authorized"
+                              >
+                                ✓
+                              </span>
+                            )}
+                            {m.photoStatus === 'PENDING_AUTHORIZATION' && (
+                              <span
+                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 ring-1 ring-slate-950 animate-pulse"
+                                title="Pending Authorization"
+                              />
+                            )}
+                          </div>
+                          {isOfficialOrAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPassportUploadForMember(m)}
+                              title={`Change / Add / Edit 2×2 Photo for Shareholder ${m.name} (Official Authority)`}
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* 3. Full Name */}
@@ -1340,11 +1965,13 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                       {/* 15. Status */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          m.status === 'ACTIVE'
+                          (lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id])
+                            ? 'bg-rose-950/80 text-rose-300 border border-rose-700 font-bold'
+                            : m.status === 'ACTIVE'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                             : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
                         }`}>
-                          {m.status}
+                          {(lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id]) ? 'LOCKED' : m.status}
                         </span>
                       </td>
 
@@ -1361,6 +1988,29 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                           </button>
                           {canApproveAndModify && (
                             <>
+                              {/* Lock / Unlock User Button */}
+                              {(lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id]) ? (
+                                <button
+                                  onClick={() => handleUnlockUser(m.id, m.name)}
+                                  title={`User account is locked. Click to unlock access for ${m.name}`}
+                                  className="px-2 py-1 bg-amber-950/80 hover:bg-amber-900/80 text-amber-300 border border-amber-700 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                                >
+                                  <Lock className="w-3 h-3 text-amber-400" />
+                                  <span>Unlock</span>
+                                </button>
+                              ) : (
+                                !(m.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN') && (
+                                  <button
+                                    onClick={() => handleOpenLockUser(m.id, m.name, m.id)}
+                                    title={`Lock user ${m.name} if stuck`}
+                                    className="px-2 py-1 bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                                  >
+                                    <Power className="w-3 h-3" />
+                                    <span>Lock</span>
+                                  </button>
+                                )
+                              )}
+
                               {m.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN' ? (
                                 <span
                                   title="Saif Ahmed Sakil (Root System Admin) is strictly excluded from Delegated Admin password reset"
@@ -1415,13 +2065,31 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </div>
 
               {currentUser?.role === 'SYSTEM_ADMIN' && (
-                <button
-                  onClick={() => setShowAddOfficialModal(true)}
-                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 transition self-start sm:self-auto"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Create New Official</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setShowPeriodicPasswordModal(true)}
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-amber-950/90 to-amber-900/70 hover:from-amber-900 hover:to-amber-800 text-amber-200 border border-amber-600/70 rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 transition"
+                    title="Configure Periodic Initial Password and Roll Out to All Users"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                    <span>
+                      Set Initial Password Periodically: <strong className="font-mono text-white">{sysDefaultPass}</strong>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40">
+                      {periodicStatus.frequencyLabel}
+                    </span>
+                    {periodicStatus.isOverdue && (
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowAddOfficialModal(true)}
+                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 transition self-start sm:self-auto"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Create New Official</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1439,6 +2107,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
                   <tr>
                     <th className="py-3 px-4">Official ID</th>
+                    <th className="py-3 px-3">2×2 Photo</th>
                     <th className="py-3 px-4">Full Name & Username</th>
                     <th className="py-3 px-4">Official Designation</th>
                     <th className="py-3 px-4">Department</th>
@@ -1452,6 +2121,36 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     <tr key={off.id} className="hover:bg-slate-800/40 transition">
                       <td className="py-3.5 px-4 font-mono font-bold text-purple-400">
                         {off.id}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-white shadow-sm flex items-center justify-center relative shrink-0">
+                            {off.photoUrl ? (
+                              <img src={off.photoUrl} alt={off.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-[10px] font-bold">
+                                {off.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="absolute top-0.5 left-0.5 bg-slate-950/80 px-1 py-0.2 rounded text-[7px] font-mono text-emerald-300">
+                              2"×2"
+                            </div>
+                          </div>
+                          {isOfficialOrAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPassportTargetMember(null);
+                                setPassportTargetOfficial(off.username);
+                                setShowPassportModal(true);
+                              }}
+                              title={`Change / Add / Edit 2×2 Photo for Official ${off.name}`}
+                              className="p-1 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-white">{off.name}</div>
@@ -1488,7 +2187,28 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {canApproveAndModify && (
+                            (lockedUsersMap[off.username.toLowerCase()] || lockedUsersMap[off.id.toLowerCase()]) ? (
+                              <button
+                                onClick={() => handleUnlockUser(off.username, off.name)}
+                                title="Official account is locked. Click to unlock."
+                                className="px-2 py-1 bg-amber-950/80 hover:bg-amber-900/80 text-amber-300 border border-amber-700 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Lock className="w-3 h-3 text-amber-400" />
+                                <span>Unlock</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenLockUser(off.id, off.name, off.username)}
+                                title={`Lock official account ${off.name} if stuck`}
+                                className="px-2 py-1 bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-700 rounded text-[11px] font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Power className="w-3 h-3" />
+                                <span>Lock</span>
+                              </button>
+                            )
+                          )}
                           <button
                             onClick={() => handleOpenResetPassword(off.id, off.name, off.username, 'OFFICIAL')}
                             title={`Reset password for Official ${off.name} (@${off.username})`}
@@ -1561,6 +2281,62 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             </div>
 
             <form onSubmit={handleSaveDirectEdit} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              {/* 2x2 Passport Photo Section */}
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border-2 border-emerald-500/70 bg-white shrink-0 relative shadow-inner">
+                    {directEditMember.photoUrl ? (
+                      <img
+                        src={directEditMember.photoUrl}
+                        alt={directEditMember.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-500 text-[10px]">
+                        <UserIcon className="w-5 h-5 text-slate-500 mb-0.5" />
+                        <span>No Photo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs flex items-center gap-2">
+                      <span>2×2 Passport Photo</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                        directEditMember.photoStatus === 'AUTHORIZED'
+                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                          : directEditMember.photoStatus === 'PENDING_AUTHORIZATION'
+                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {directEditMember.photoStatus || 'STANDARD'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Standard 1:1 Square (2"×2") Passport Format
+                    </div>
+                    {directEditMember.photoAuthorizedByName && (
+                      <div className="text-[10px] text-slate-500">
+                        Authorized by: {directEditMember.photoAuthorizedByName}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {isOfficialOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = directEditMember;
+                      handleOpenPassportUploadForMember(target);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{directEditMember.photoUrl ? 'Change 2×2 Photo' : 'Add 2×2 Photo'}</span>
+                  </button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Full Legal Name</label>
@@ -1898,8 +2674,22 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-base font-bold shadow">
-                  {selectedDossierMember.name.slice(0, 2).toUpperCase()}
+                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-600 bg-white shadow-md relative shrink-0">
+                  {selectedDossierMember.photoUrl ? (
+                    <img
+                      src={selectedDossierMember.photoUrl}
+                      alt={selectedDossierMember.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-500">
+                      <Camera className="w-6 h-6 mb-0.5 text-slate-600" />
+                      <span className="text-[8px] font-mono">2"×2"</span>
+                    </div>
+                  )}
+                  <div className="absolute top-0.5 left-0.5 bg-slate-950/80 px-1 py-0.2 rounded text-[7px] font-mono text-emerald-300">
+                    2"×2"
+                  </div>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1911,8 +2701,13 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                       Share #{selectedDossierMember.shareNumber}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Prottasha Housing Society – Official Member Dossier & Directory Record
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                    <span>Prottasha Housing Society – Official Member Dossier</span>
+                    {selectedDossierMember.photoStatus === 'AUTHORIZED' && (
+                      <span className="text-emerald-400 font-semibold text-[10px]">
+                        ✓ 2×2 Photo Authorized
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -2061,17 +2856,71 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </span>
               <div className="flex items-center gap-2">
                 {canApproveAndModify && (
-                  <button
-                    onClick={() => {
-                      const target = selectedDossierMember;
-                      setSelectedDossierMember(null);
-                      handleOpenDirectEdit(target);
-                    }}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Edit Profile</span>
-                  </button>
+                  <>
+                    {(lockedUsersMap[selectedDossierMember.id.toLowerCase()] || lockedUsersMap[selectedDossierMember.id]) ? (
+                      <button
+                        onClick={() => handleUnlockUser(selectedDossierMember.id, selectedDossierMember.name)}
+                        className="px-3 py-1.5 bg-amber-950/80 hover:bg-amber-900/80 text-amber-300 border border-amber-700 rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Unlock Account</span>
+                      </button>
+                    ) : (
+                      !(selectedDossierMember.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN') && (
+                        <button
+                          onClick={() => {
+                            const target = selectedDossierMember;
+                            setSelectedDossierMember(null);
+                            handleOpenLockUser(target.id, target.name, target.id);
+                          }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-700 rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                          <span>Lock User</span>
+                        </button>
+                      )
+                    )}
+
+                    {!(selectedDossierMember.id === 'PHSM-001' && currentUser?.role === 'DELEGATED_ADMIN') && (
+                      <button
+                        onClick={() => {
+                          const target = selectedDossierMember;
+                          setSelectedDossierMember(null);
+                          handleOpenResetPassword(target.id, target.name, target.id, 'MEMBER');
+                        }}
+                        className="px-3 py-1.5 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-800/80 rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Reset Pass</span>
+                      </button>
+                    )}
+
+                    {isOfficialOrAdmin && (
+                      <button
+                        onClick={() => {
+                          const target = selectedDossierMember;
+                          setSelectedDossierMember(null);
+                          handleOpenPassportUploadForMember(target);
+                        }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>{selectedDossierMember.photoUrl ? 'Edit 2×2 Photo' : 'Add 2×2 Photo'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        const target = selectedDossierMember;
+                        setSelectedDossierMember(null);
+                        handleOpenDirectEdit(target);
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow transition flex items-center gap-1.5"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Profile</span>
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setSelectedDossierMember(null)}
@@ -2263,9 +3112,19 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 flex items-start gap-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-400 mt-0.5 shrink-0" />
                 <span>
-                  Authorized by <strong>{currentUser?.name}</strong> ({currentUser?.role === 'SYSTEM_ADMIN' ? 'System Admin' : 'Delegated Admin'}). Initial default system password is <strong className="text-white font-mono">12345679</strong>.
+                  Authorized by <strong>{currentUser?.name}</strong> (
+                  {currentUser?.role === 'SYSTEM_ADMIN' ? 'System Admin' : 'Delegated Admin'}
+                  ). System Default Password is{' '}
+                  <strong className="text-white font-mono">{sysDefaultPass}</strong>. User will be{' '}
+                  <strong className="text-amber-400">forced to change password upon next login</strong>.
                 </span>
               </div>
+
+              {currentUser?.role === 'DELEGATED_ADMIN' && (
+                <div className="text-[11px] text-amber-300 bg-amber-950/40 p-2.5 rounded-lg border border-amber-800/80">
+                  <strong>Delegated Admin Notice:</strong> You are resetting this user account to the System Default Password set by System Admin. Root System Admin Saif Ahmed Sakil is excluded.
+                </div>
+              )}
 
               {resetFeedback.error && (
                 <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
@@ -2287,10 +3146,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                   <label className="block text-slate-300 font-semibold">New Password</label>
                   <button
                     type="button"
-                    onClick={() => setNewPasswordInput('12345679')}
+                    onClick={() => setNewPasswordInput(sysDefaultPass)}
                     className="text-[11px] text-purple-400 hover:text-purple-300 font-mono transition"
                   >
-                    Set Default: 12345679
+                    Reset to Default: {sysDefaultPass}
                   </button>
                 </div>
                 <div className="relative">
@@ -2305,7 +3164,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                   />
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  User can log in immediately with this new password.
+                  User can log in immediately with this default password, and will be forced to change it on next login.
                 </span>
               </div>
 
@@ -2327,6 +3186,346 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>Confirm Password Reset</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* User Account Lock Confirmation Modal (System Admin & Delegated Admin) */}
+      {lockModalOpen && lockTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Power className="w-5 h-5 text-rose-400" />
+                <span>Lock User Account</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setLockModalOpen(false);
+                  setLockTarget(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmLockUser} className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-rose-950/40 rounded-xl border border-rose-800/60 space-y-1.5 text-rose-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Account Target:</span>
+                  <span className="font-bold text-white text-sm">{lockTarget.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Identifier / ID:</span>
+                  <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/80">
+                    {lockTarget.identifier}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-slate-300 space-y-1">
+                <p>
+                  Locking this account will immediately revoke login access for this user if they get stuck or are under administrative review.
+                </p>
+                <p className="text-slate-400 text-[11px]">
+                  System Admin and Delegated Admin can unlock this user at any time with a single click.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">Reason for Lock</label>
+                <input
+                  type="text"
+                  required
+                  value={lockReasonInput}
+                  onChange={(e) => setLockReasonInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:border-rose-500"
+                  placeholder="e.g. Account stuck / repeated attempts / security hold"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLockModalOpen(false);
+                    setLockTarget(null);
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold shadow flex items-center gap-1.5"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>Confirm Lock User</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Configure System Default Password Modal (System Admin only) */}
+      {showSysDefaultModal && currentUser?.role === 'SYSTEM_ADMIN' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <span>Configure System Default Password</span>
+              </h3>
+              <button
+                onClick={() => setShowSysDefaultModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSystemDefaultPassword} className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-slate-300 space-y-1">
+                <div className="font-semibold text-emerald-400">System Admin Authority:</div>
+                <p>
+                  As System Admin ({currentUser.name}), you can set the default password for the entire society system.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  When System Admin or Delegated Admin resets any user's password, it resets to this default password.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-semibold">New System Default Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    required
+                    minLength={6}
+                    value={newSysDefaultInput}
+                    onChange={(e) => setNewSysDefaultInput(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-amber-500"
+                    placeholder="e.g. 12345679 or Prottasha@2026"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  Must be at least 6 characters long.
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSysDefaultModal(false)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg shadow"
+                >
+                  Save System Default
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Periodic Password Modal */}
+      {showPeriodicPasswordModal && currentUser?.role === 'SYSTEM_ADMIN' && (
+        <PeriodicPasswordModal
+          isOpen={showPeriodicPasswordModal}
+          onClose={() => {
+            setShowPeriodicPasswordModal(false);
+            setSysDefaultPass(storageService.getSystemDefaultPassword());
+            setPeriodicStatus(storageService.getPeriodicPasswordStatus());
+          }}
+          currentUser={currentUser}
+          onSuccess={(msg) => {
+            setSuccessBanner(msg);
+            setSysDefaultPass(storageService.getSystemDefaultPassword());
+            setPeriodicStatus(storageService.getPeriodicPasswordStatus());
+            setTimeout(() => setSuccessBanner(''), 5000);
+          }}
+        />
+      )}
+
+      {/* Self Password Change Modal */}
+      {showSelfPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">Change My Password</h3>
+              </div>
+              <button
+                onClick={() => setShowSelfPasswordModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteSelfPasswordChange} className="p-6 space-y-4 text-xs">
+              {selfPassError && (
+                <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{selfPassError}</span>
+                </div>
+              )}
+
+              {selfPassSuccess && (
+                <div className="p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-emerald-300 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{selfPassSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type={showSelfPass ? 'text' : 'password'}
+                    required
+                    value={selfNewPass}
+                    onChange={(e) => setSelfNewPass(e.target.value)}
+                    placeholder="Enter at least 6 characters"
+                    className="w-full pl-9 pr-10 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSelfPass(!showSelfPass)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showSelfPass ? <X className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Cannot be default password (12345679).
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Confirm New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type={showSelfPass ? 'text' : 'password'}
+                    required
+                    value={selfConfirmPass}
+                    onChange={(e) => setSelfConfirmPass(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSelfPasswordModal(false)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Update Password</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2×2 Passport Photo Modal */}
+      <PassportPhotoModal
+        isOpen={showPassportModal}
+        onClose={() => {
+          setShowPassportModal(false);
+          setPassportTargetMember(null);
+          setPassportTargetOfficial(undefined);
+        }}
+        currentUser={currentUser}
+        targetMember={passportTargetMember}
+        targetOfficialUsername={passportTargetOfficial}
+        onPhotoSaved={() => {
+          setRequests(storageService.getProfileUpdateRequests());
+          setPendingPhotos(storageService.getPendingPhotoAuthorizations());
+          setOfficials(storageService.getOfficials());
+        }}
+      />
+
+      {/* Reject Photo Modal */}
+      {rejectingPhotoMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-rose-400" />
+                <h3 className="text-sm font-bold text-white">Reject 2×2 Passport Photo</h3>
+              </div>
+              <button
+                onClick={() => setRejectingPhotoMember(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecutePhotoReject} className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Shareholder:</span>
+                  <span className="font-bold text-white">{rejectingPhotoMember.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Share#:</span>
+                  <span className="font-mono text-emerald-400">#{rejectingPhotoMember.shareNumber} ({rejectingPhotoMember.id})</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Reason for Photo Rejection
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={photoRejectReasonInput}
+                  onChange={(e) => setPhotoRejectReasonInput(e.target.value)}
+                  placeholder="e.g. Photo does not meet 2×2 passport specs (blurry, non-neutral background, face not centered)"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setRejectingPhotoMember(null)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Confirm Rejection</span>
                 </button>
               </div>
             </form>
