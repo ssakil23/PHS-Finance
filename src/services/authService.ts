@@ -156,6 +156,13 @@ class AuthService {
 
   public getCurrentUser(): User | null {
     if (this.currentUser) {
+      // Synchronize password requirement state dynamically
+      const hasCustom = storageService.hasCustomPassword(this.currentUser.username);
+      this.currentUser.hasChangedDefaultPassword = hasCustom;
+      this.currentUser.requiresPasswordChange = storageService.isPasswordChangeRequired(
+        this.currentUser.username
+      );
+
       if (this.currentUser.memberId) {
         const m = storageService.getMemberById(this.currentUser.memberId);
         if (m) {
@@ -204,19 +211,49 @@ class AuthService {
     }
 
     // Passwords check: user-specific password, system default password set by System Admin, or root password
+    const hasCustom = storageService.hasCustomPassword(username);
     const storedPass = storageService.getUserPassword(username);
     const systemDefault = storageService.getSystemDefaultPassword();
-    const isPassValid =
-      password === storedPass ||
-      password === systemDefault ||
-      password === '12345679' ||
-      ((username.toLowerCase() === 'ssakil' || username.toUpperCase() === 'PHSM-001') && password === 'Sarah@14#2014');
 
-    if (!isPassValid) {
-      return {
-        success: false,
-        message: `Invalid password. (System default password is: ${systemDefault})`,
-      };
+    let isPassValid = false;
+
+    if (hasCustom) {
+      // User has set a custom personal password. The old default password CANNOT open the account anymore!
+      isPassValid = password === storedPass;
+      if (!isPassValid) {
+        if (
+          password === systemDefault ||
+          password === '12345679' ||
+          password === 'Sarah@14#2014'
+        ) {
+          return {
+            success: false,
+            message:
+              'Invalid password. You have previously set a personal password for this account. The old default password is no longer accepted. Please enter your new personal password.',
+          };
+        }
+        return {
+          success: false,
+          message: 'Invalid password. Please enter the new personal password you set for this account.',
+        };
+      }
+    } else {
+      // User has not set a personal password yet (initial default password or reset by admin)
+      isPassValid =
+        password === storedPass ||
+        password === systemDefault ||
+        password === '12345679' ||
+        ((username.toLowerCase() === 'ssakil' ||
+          username.toUpperCase() === 'PHSM-001' ||
+          username === '1') &&
+          password === 'Sarah@14#2014');
+
+      if (!isPassValid) {
+        return {
+          success: false,
+          message: `Invalid password. (Initial system default password is: ${systemDefault})`,
+        };
+      }
     }
 
     const lowerUser = username.toLowerCase();
@@ -388,8 +425,8 @@ class AuthService {
   }
 
   public loginAsPersona(username: string): boolean {
-    const sysDefault = storageService.getSystemDefaultPassword();
-    const result = this.login(username, sysDefault);
+    const activePass = storageService.getUserPassword(username);
+    const result = this.login(username, activePass);
     return result.success;
   }
 

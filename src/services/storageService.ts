@@ -31,6 +31,8 @@ import {
   PeriodicPasswordStatus,
   PeriodicPasswordInterval,
   SystemSnapshotRecord,
+  ShareTransferRecord,
+  RecordShareTransferInput,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -44,8 +46,9 @@ import {
   INITIAL_DOCUMENTS,
   INITIAL_POSTS,
   INITIAL_QUERIES,
+  INITIAL_SHARE_TRANSFERS,
 } from '../utils/seedData';
-import { ensureMemberDemographics } from '../utils/directors';
+import { ensureMemberDemographics, getDirectorForShareNumber } from '../utils/directors';
 import { formatBDT } from '../utils/calculations';
 
 export const DEFAULT_INCOME_CATEGORIES: string[] = [
@@ -101,6 +104,7 @@ const STORAGE_KEYS = {
   OVERDUE_ALERTS: 'phs_finance_overdue_alerts_v1',
   PERIODIC_PASSWORD_POLICY: 'phs_finance_periodic_password_policy_v1',
   LOCAL_SNAPSHOTS: 'phs_finance_system_snapshots_v1',
+  SHARE_TRANSFERS: 'phs_finance_share_transfers_v1',
 };
 
 export const DEFAULT_PERIODIC_PASSWORD_POLICY: PeriodicPasswordPolicy = {
@@ -282,6 +286,9 @@ class StorageService {
     if (!localStorage.getItem(STORAGE_KEYS.LOCAL_SNAPSHOTS)) {
       localStorage.setItem(STORAGE_KEYS.LOCAL_SNAPSHOTS, JSON.stringify([]));
     }
+    if (!localStorage.getItem(STORAGE_KEYS.SHARE_TRANSFERS)) {
+      localStorage.setItem(STORAGE_KEYS.SHARE_TRANSFERS, JSON.stringify(INITIAL_SHARE_TRANSFERS));
+    }
     if (!localStorage.getItem(STORAGE_KEYS.LAST_SYNC)) {
       localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
     }
@@ -434,6 +441,10 @@ class StorageService {
       spouseName?: string;
       spouseMobile?: string;
       emergencyContact?: string;
+      isNameCorrectionOnly?: boolean;
+      currentName?: string;
+      correctionReason?: string;
+      supportingDocumentRef?: string;
     },
     currentUser: User
   ): ProfileUpdateRequest {
@@ -453,6 +464,10 @@ class StorageService {
       proposedSpouseName: proposed.spouseName,
       proposedSpouseMobile: proposed.spouseMobile,
       proposedEmergencyContact: proposed.emergencyContact,
+      isNameCorrectionOnly: proposed.isNameCorrectionOnly,
+      currentName: proposed.currentName,
+      correctionReason: proposed.correctionReason,
+      supportingDocumentRef: proposed.supportingDocumentRef,
       requestedAt: new Date().toISOString(),
       requestedBy: currentUser.name,
       status: 'PENDING',
@@ -478,6 +493,10 @@ class StorageService {
         spouseName: proposed.spouseName,
         spouseMobile: proposed.spouseMobile,
         emergencyContact: proposed.emergencyContact,
+        isNameCorrectionOnly: proposed.isNameCorrectionOnly,
+        currentName: proposed.currentName || m.name,
+        correctionReason: proposed.correctionReason,
+        supportingDocumentRef: proposed.supportingDocumentRef,
         requestedAt: new Date().toISOString(),
       };
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
@@ -488,11 +507,82 @@ class StorageService {
       'UPDATE',
       'MEMBER',
       memberId,
-      `Submitted profile change request for member ${memberId} (Awaiting Admin Approval)`
+      proposed.isNameCorrectionOnly
+        ? `Submitted name spelling correction request for member ${memberId} ("${m ? m.name : ''}" → "${proposed.name}"). Reason: ${proposed.correctionReason || 'Typo correction'}`
+        : `Submitted profile change request for member ${memberId} (Awaiting Admin / Official Approval)`
     );
 
     this.notify();
     return newReq;
+  }
+
+  public submitNameCorrectionRequest(
+    memberId: string,
+    proposedName: string,
+    correctionReason: string,
+    supportingDocumentRef: string | undefined,
+    currentUser: User
+  ): ProfileUpdateRequest {
+    const member = this.getMemberById(memberId);
+    if (!member) {
+      throw new Error(`Member ${memberId} not found in society records.`);
+    }
+    const cleanProposed = proposedName.trim();
+    if (!cleanProposed) {
+      throw new Error('Proposed corrected name cannot be blank.');
+    }
+    if (cleanProposed.toLowerCase() === member.name.toLowerCase()) {
+      throw new Error('Proposed corrected name is identical to the current registered name.');
+    }
+
+    return this.submitProfileUpdateRequest(
+      memberId,
+      {
+        name: cleanProposed,
+        phone: member.phone,
+        email: member.email,
+        address: member.currentAddress || member.address,
+        currentAddress: member.currentAddress || member.address,
+        permanentAddress: member.permanentAddress,
+        nidOrBirthId: member.nidOrBirthId,
+        dob: member.dob,
+        education: member.education,
+        spouseName: member.spouseName,
+        spouseMobile: member.spouseMobile,
+        emergencyContact: member.emergencyContact,
+        isNameCorrectionOnly: true,
+        currentName: member.name,
+        correctionReason: correctionReason.trim() || 'Spelling correction',
+        supportingDocumentRef: supportingDocumentRef?.trim() || undefined,
+      },
+      currentUser
+    );
+  }
+
+  public cancelProfileUpdateRequest(requestId: string, currentUser: User): void {
+    const requests = this.getProfileUpdateRequests();
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    const reqMemberId = req.memberId;
+    const isOwner = currentUser.memberId && currentUser.memberId.toLowerCase() === reqMemberId.toLowerCase();
+    const isOfficial = this.isOfficialOrAdmin(currentUser);
+
+    if (!isOwner && !isOfficial) {
+      throw new Error('Permission denied: You can only cancel your own pending requests.');
+    }
+
+    const updated = requests.filter((r) => r.id !== requestId);
+    localStorage.setItem(STORAGE_KEYS.PROFILE_REQUESTS, JSON.stringify(updated));
+
+    const members = this.getMembers();
+    const m = members.find((item) => item.id.toLowerCase() === reqMemberId.toLowerCase());
+    if (m) {
+      delete m.pendingUpdate;
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+    }
+
+    this.notify();
   }
 
   public approveProfileUpdateRequest(
@@ -513,8 +603,8 @@ class StorageService {
       emergencyContact?: string;
     }
   ): void {
-    if (currentUser.role !== 'SYSTEM_ADMIN' && currentUser.role !== 'DELEGATED_ADMIN') {
-      throw new Error('Only System Admin or Delegated Admin can approve profile updates.');
+    if (!this.isOfficialOrAdmin(currentUser)) {
+      throw new Error('Access Denied: Only System Admin, Delegated Admin, or designated Officials can approve profile updates.');
     }
 
     const requests = this.getProfileUpdateRequests();
@@ -530,6 +620,7 @@ class StorageService {
     const members = this.getMembers();
     const m = members.find((item) => item.id === req.memberId);
     if (m) {
+      const oldName = m.name;
       m.name = modifications?.name || req.proposedName;
       m.phone = modifications?.phone || req.proposedPhone;
       m.email = modifications?.email || req.proposedEmail;
@@ -567,18 +658,19 @@ class StorageService {
       }
       delete m.pendingUpdate;
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+
+      this.logAudit(
+        currentUser,
+        'APPROVE',
+        'MEMBER',
+        req.memberId,
+        req.isNameCorrectionOnly
+          ? `Approved name spelling correction for Member ${req.memberId}: "${oldName}" → "${m.name}" by ${currentUser.name} (${currentUser.officialDesignation || currentUser.role})`
+          : `Approved and committed profile changes for Member ${req.memberId} (${m.name}) by ${currentUser.name}`
+      );
     }
 
     localStorage.setItem(STORAGE_KEYS.PROFILE_REQUESTS, JSON.stringify(requests));
-
-    this.logAudit(
-      currentUser,
-      'APPROVE',
-      'MEMBER',
-      req.memberId,
-      `Approved and committed profile changes for member ${req.memberId} (${m?.name})`
-    );
-
     this.notify();
   }
 
@@ -588,7 +680,7 @@ class StorageService {
     currentUser: User
   ): void {
     if (!this.isOfficialOrAdmin(currentUser)) {
-      throw new Error('Only Officials and Admins can reject profile updates.');
+      throw new Error('Access Denied: Only System Admin, Delegated Admin, or designated Officials can reject profile updates.');
     }
 
     const requests = this.getProfileUpdateRequests();
@@ -1136,6 +1228,261 @@ class StorageService {
     localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
     this.logAudit(currentUser, 'HARD_DELETE', 'INCOME', id, `Permanently purged deposit record ${id}`);
     this.notify();
+  }
+
+  // --- Share Transfers Registry & Workflow ---
+  public getShareTransfers(): ShareTransferRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.SHARE_TRANSFERS);
+      return data ? JSON.parse(data) : INITIAL_SHARE_TRANSFERS;
+    } catch {
+      return INITIAL_SHARE_TRANSFERS;
+    }
+  }
+
+  public getShareTransfersByMember(memberId: string): ShareTransferRecord[] {
+    const transfers = this.getShareTransfers();
+    const mid = memberId.toLowerCase();
+    return transfers.filter(
+      (t) => t.fromMemberId.toLowerCase() === mid || t.toMemberId.toLowerCase() === mid
+    );
+  }
+
+  public getShareTransfersByDirector(directorKey: string): ShareTransferRecord[] {
+    const transfers = this.getShareTransfers();
+    return transfers.filter(
+      (t) => t.fromDirectorKey === directorKey || t.toDirectorKey === directorKey
+    );
+  }
+
+  public recordShareTransfer(
+    input: RecordShareTransferInput,
+    currentUser: User
+  ): {
+    transfer: ShareTransferRecord;
+    outIncome: IncomeEntry;
+    inIncome: IncomeEntry;
+    feeIncome?: IncomeEntry;
+  } {
+    // 1. Permission check: Only authorized Officials or Admins
+    if (!this.isOfficialOrAdmin(currentUser) && !this.isUserEmpoweredForEntry(currentUser)) {
+      throw new Error('Access Denied: Only authorized Society Officials or Admins can record Share Transfers.');
+    }
+
+    // 2. Member validation
+    const fromMember = this.getMemberById(input.fromMemberId);
+    if (!fromMember) {
+      throw new Error(`Transferor Member ${input.fromMemberId} not found in society registry.`);
+    }
+
+    const toMember = this.getMemberById(input.toMemberId);
+    if (!toMember) {
+      throw new Error(`Transferee Member ${input.toMemberId} not found in society registry.`);
+    }
+
+    if (fromMember.id.toLowerCase() === toMember.id.toLowerCase()) {
+      throw new Error('Transferor and Transferee cannot be the same member account.');
+    }
+
+    if (input.transferredAmount < 0) {
+      throw new Error('Transferred capital amount cannot be negative.');
+    }
+
+    if (input.transferFeeBDT < 0) {
+      throw new Error('Society transfer processing fee cannot be negative.');
+    }
+
+    const shareTransfers = this.getShareTransfers();
+    const count = shareTransfers.length + 1;
+    const year = new Date().getFullYear();
+    const transferId = `STX-${year}-${String(count).padStart(3, '0')}`;
+    const nowIso = new Date().toISOString();
+
+    const fromDirector = getDirectorForShareNumber(fromMember.shareNumber);
+    const toDirector = getDirectorForShareNumber(toMember.shareNumber);
+
+    // 3. Automatically record linked Incomes / Ledger entries for both members
+    const incomes = this.getIncomes();
+    const incomeCount = incomes.length;
+
+    // Outflow entry for Transferor (Source)
+    const outIncomeId = `DEP-${year}-${String(incomeCount + 1).padStart(3, '0')}`;
+    const outIncome: IncomeEntry = {
+      id: outIncomeId,
+      type: 'GENERAL_DEPOSIT',
+      amount: -Math.abs(input.transferredAmount),
+      category: 'Share Transfer (Transfer Out)',
+      date: input.transferDate || nowIso.split('T')[0],
+      shareOwnerId: fromMember.id,
+      shareNumber: fromMember.shareNumber,
+      memberName: fromMember.name,
+      controllingDirector: fromMember.controllingDirectorName || fromDirector.name,
+      paymentMethod: input.paymentMethod || 'Bank Transfer',
+      referenceNumber: input.resolutionNumber || transferId,
+      remarks: `Share Transfer OUT: Transferred Share #${input.transferredShareNumber} to ${toMember.name} (${toMember.id}). Ref: ${input.resolutionNumber || transferId}. ${input.transferReason || ''}`.trim(),
+      submitterId: currentUser.username,
+      submitterName: currentUser.name,
+      submitterRole: currentUser.role,
+      status: 'APPROVED',
+      tier: 'Tier-1',
+      approvedBy: currentUser.username,
+      approvedByName: currentUser.name,
+      approvedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    // Inflow entry for Transferee (Destination)
+    const inIncomeId = `DEP-${year}-${String(incomeCount + 2).padStart(3, '0')}`;
+    const inIncome: IncomeEntry = {
+      id: inIncomeId,
+      type: 'GENERAL_DEPOSIT',
+      amount: Math.abs(input.transferredAmount),
+      category: 'Share Transfer (Transfer In)',
+      date: input.transferDate || nowIso.split('T')[0],
+      shareOwnerId: toMember.id,
+      shareNumber: toMember.shareNumber,
+      memberName: toMember.name,
+      controllingDirector: toMember.controllingDirectorName || toDirector.name,
+      paymentMethod: input.paymentMethod || 'Bank Transfer',
+      referenceNumber: input.resolutionNumber || transferId,
+      remarks: `Share Transfer IN: Acquired Share #${input.transferredShareNumber} from ${fromMember.name} (${fromMember.id}). Ref: ${input.resolutionNumber || transferId}. ${input.transferReason || ''}`.trim(),
+      submitterId: currentUser.username,
+      submitterName: currentUser.name,
+      submitterRole: currentUser.role,
+      status: 'APPROVED',
+      tier: 'Tier-1',
+      approvedBy: currentUser.username,
+      approvedByName: currentUser.name,
+      approvedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    incomes.unshift(inIncome);
+    incomes.unshift(outIncome);
+
+    // Optional Society Transfer Processing Fee
+    let feeIncome: IncomeEntry | undefined;
+    let feeIncomeId: string | undefined;
+    if (input.transferFeeBDT > 0 && input.transferFeePayer !== 'EXEMPT') {
+      const feePayerMember = input.transferFeePayer === 'TRANSFEROR' ? fromMember : toMember;
+      feeIncomeId = `DEP-${year}-${String(incomeCount + 3).padStart(3, '0')}`;
+      feeIncome = {
+        id: feeIncomeId,
+        type: 'GENERAL_DEPOSIT',
+        amount: input.transferFeeBDT,
+        category: 'Share Transfer Fee',
+        date: input.transferDate || nowIso.split('T')[0],
+        shareOwnerId: feePayerMember.id,
+        shareNumber: feePayerMember.shareNumber,
+        memberName: feePayerMember.name,
+        controllingDirector: feePayerMember.controllingDirectorName,
+        paymentMethod: input.paymentMethod || 'Bank Transfer',
+        referenceNumber: `${transferId}-FEE`,
+        remarks: `Official Society Processing Fee for Share Transfer #${transferId} (Share #${input.transferredShareNumber}: ${fromMember.id} → ${toMember.id})`,
+        submitterId: currentUser.username,
+        submitterName: currentUser.name,
+        submitterRole: currentUser.role,
+        status: 'APPROVED',
+        tier: 'Tier-1',
+        approvedBy: currentUser.username,
+        approvedByName: currentUser.name,
+        approvedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      incomes.unshift(feeIncome);
+    }
+
+    localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+
+    // 4. Update both members' share ledgers
+    const members = this.getMembers();
+    const fromIdx = members.findIndex((m) => m.id === fromMember.id);
+    const toIdx = members.findIndex((m) => m.id === toMember.id);
+
+    if (fromIdx >= 0) {
+      const updatedTransferred = members[fromIdx].transferredShares || [];
+      updatedTransferred.push({
+        shareNumber: input.transferredShareNumber,
+        transferredToMemberId: toMember.id,
+        transferredToMemberName: toMember.name,
+        transferredAt: nowIso,
+        transferRecordId: transferId,
+      });
+      members[fromIdx] = {
+        ...members[fromIdx],
+        transferredShares: updatedTransferred,
+      };
+    }
+
+    if (toIdx >= 0) {
+      const updatedAdditional = new Set(members[toIdx].additionalShares || []);
+      updatedAdditional.add(input.transferredShareNumber);
+      members[toIdx] = {
+        ...members[toIdx],
+        additionalShares: Array.from(updatedAdditional),
+      };
+    }
+
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+
+    // 5. Store completed Transfer Record
+    const transferRecord: ShareTransferRecord = {
+      id: transferId,
+      transferDate: input.transferDate || nowIso.split('T')[0],
+      transferCategory: input.transferCategory,
+      fromMemberId: fromMember.id,
+      fromMemberName: fromMember.name,
+      fromShareNumber: fromMember.shareNumber,
+      fromDirectorKey: fromDirector.key,
+      fromDirectorName: fromDirector.name,
+      toMemberId: toMember.id,
+      toMemberName: toMember.name,
+      toShareNumber: toMember.shareNumber,
+      toDirectorKey: toDirector.key,
+      toDirectorName: toDirector.name,
+      transferredShareNumber: input.transferredShareNumber,
+      transferredAmount: input.transferredAmount,
+      transferFeeBDT: input.transferFeeBDT,
+      transferFeePayer: input.transferFeePayer,
+      paymentMethod: input.paymentMethod,
+      bankReferenceNumber: input.bankReferenceNumber,
+      resolutionNumber: input.resolutionNumber,
+      deedOrStampNumber: input.deedOrStampNumber,
+      transferReason: input.transferReason,
+      remarks: input.remarks || '',
+      recordedByUsername: currentUser.username,
+      recordedByName: currentUser.name,
+      recordedByRole: currentUser.role,
+      recordedByDesignation: currentUser.officialDesignation || (currentUser.role === 'SYSTEM_ADMIN' ? 'System Admin' : 'Official'),
+      recordedAt: nowIso,
+      status: 'COMPLETED',
+      outIncomeId,
+      inIncomeId,
+      feeIncomeId,
+    };
+
+    shareTransfers.unshift(transferRecord);
+    localStorage.setItem(STORAGE_KEYS.SHARE_TRANSFERS, JSON.stringify(shareTransfers));
+
+    // 6. Security Audit Log
+    this.logAudit(
+      currentUser,
+      'SHARE_TRANSFER',
+      'SHARE_TRANSFER',
+      transferId,
+      `Executed Official Share Transfer #${transferId}: Transferred Share #${input.transferredShareNumber} from ${fromMember.name} (${fromMember.id}) to ${toMember.name} (${toMember.id}). Capital Amount: ${formatBDT(input.transferredAmount)}, Fee: ${formatBDT(input.transferFeeBDT)}. Resolution: ${input.resolutionNumber}`
+    );
+
+    this.notify();
+    return {
+      transfer: transferRecord,
+      outIncome,
+      inIncome,
+      feeIncome,
+    };
   }
 
   // --- Expenses ---
@@ -1740,6 +2087,142 @@ class StorageService {
     };
   }
 
+  /**
+   * Resolves all possible login aliases, member IDs, share numbers, and usernames for a given identifier.
+   */
+  public getAllAliasesForUser(rawIdentifier: string): string[] {
+    if (!rawIdentifier) return [];
+    const clean = rawIdentifier.trim();
+    const lower = clean.toLowerCase();
+    const aliases = new Set<string>();
+
+    aliases.add(clean);
+    aliases.add(lower);
+
+    // 1. Check Root Admin Saif Ahmed Sakil (Share 1)
+    if (
+      lower === 'ssakil' ||
+      lower === 'sakil' ||
+      lower === 'saif' ||
+      lower === 'saif ahmed sakil' ||
+      lower === 'phsm-001' ||
+      lower === 'phsm-1' ||
+      lower === '1' ||
+      lower === '001' ||
+      lower === '01' ||
+      lower === 'share1' ||
+      lower === 'member1' ||
+      lower === 'usr-admin-root'
+    ) {
+      [
+        'ssakil',
+        'sakil',
+        'saif',
+        'saif ahmed sakil',
+        'phsm-001',
+        'PHSM-001',
+        'phsm-1',
+        '1',
+        '001',
+        '01',
+        'share1',
+        'member1',
+        'usr-admin-root',
+      ].forEach((a) => {
+        aliases.add(a);
+        aliases.add(a.toLowerCase());
+      });
+      return Array.from(aliases);
+    }
+
+    // 2. Check Director Aliases
+    const directorAliasMap: Record<number, string[]> = {
+      21: ['sawdagor', 'masud', 'm masud sawdagor', 'phsm-021', 'PHSM-021', '21', '021', 'share21', 'member21', 'usr-del-21'],
+      49: ['molla', 'faruque', 'omar', 'm omar faruque molla', 'phsm-049', 'PHSM-049', '49', '049', 'share49', 'member49', 'usr-del-49'],
+      56: ['shahin', 'shahin ahmed', 'phsm-056', 'PHSM-056', '56', '056', 'share56', 'member56', 'usr-del-56'],
+      71: ['hashim', 'abul hashim', 'phsm-071', 'PHSM-071', '71', '071', 'share71', 'member71', 'usr-del-71'],
+      88: ['sirajul', 'sirajul islam', 'phsm-088', 'PHSM-088', '88', '088', 'share88', 'member88', 'usr-del-88'],
+      95: ['yousuf', 'm abu yousuf', 'abu yousuf', 'phsm-095', 'PHSM-095', '95', '095', 'share95', 'member95', 'usr-del-95'],
+      102: ['faizan', 'faizan ahmed', 'phsm-102', 'PHSM-102', '102', 'share102', 'member102', 'usr-del-102'],
+    };
+
+    for (const [sNumStr, list] of Object.entries(directorAliasMap)) {
+      const sNum = parseInt(sNumStr, 10);
+      if (list.map((x) => x.toLowerCase()).includes(lower)) {
+        list.forEach((a) => {
+          aliases.add(a);
+          aliases.add(a.toLowerCase());
+        });
+        return Array.from(aliases);
+      }
+    }
+
+    // 3. Check Officials
+    const officials = this.getOfficials();
+    const matchedOff = officials.find(
+      (o) =>
+        o.username.toLowerCase() === lower ||
+        o.id.toLowerCase() === lower ||
+        (o.email && o.email.toLowerCase() === lower)
+    );
+    if (matchedOff) {
+      [matchedOff.username, matchedOff.id].forEach((a) => {
+        aliases.add(a);
+        aliases.add(a.toLowerCase());
+      });
+      if (matchedOff.email) aliases.add(matchedOff.email.toLowerCase());
+      return Array.from(aliases);
+    }
+    if (lower === 'manager2') {
+      aliases.add('manager2');
+      aliases.add('usr-mgr-2');
+      return Array.from(aliases);
+    }
+
+    // 4. Check Member / Share Number (1 to 144)
+    let shareNum: number | null = null;
+    const matchMember = clean.toUpperCase().match(/^PHSM-(\d{1,3})$/);
+    if (matchMember) {
+      shareNum = parseInt(matchMember[1], 10);
+    } else {
+      const matchAlt = lower.match(/^(?:member|share)?(\d{1,3})$/);
+      if (matchAlt) {
+        shareNum = parseInt(matchAlt[1], 10);
+      }
+    }
+
+    if (shareNum !== null && shareNum >= 1 && shareNum <= 144) {
+      const pad3 = String(shareNum).padStart(3, '0');
+      const pad2 = String(shareNum).padStart(2, '0');
+      const idFormatted = `PHSM-${pad3}`;
+      [
+        idFormatted,
+        idFormatted.toLowerCase(),
+        String(shareNum),
+        pad3,
+        pad2,
+        `share${shareNum}`,
+        `share${pad3}`,
+        `member${shareNum}`,
+        `member${pad3}`,
+        `usr-mbr-${shareNum}`,
+      ].forEach((a) => {
+        aliases.add(a);
+        aliases.add(a.toLowerCase());
+      });
+
+      // If this share corresponds to a director
+      if (directorAliasMap[shareNum]) {
+        directorAliasMap[shareNum].forEach((a) => {
+          aliases.add(a);
+          aliases.add(a.toLowerCase());
+        });
+      }
+    }
+
+    return Array.from(aliases);
+  }
+
   public getUsersPasswordSecurityStats(): {
     totalUsersCount: number;
     customPasswordCount: number;
@@ -1752,21 +2235,15 @@ class StorageService {
     const allOfficials = this.getOfficials();
     const totalUsersCount = allMembers.length + allOfficials.length;
 
-    let changedUsers: Record<string, boolean> = {};
-    try {
-      const cData = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
-      if (cData) changedUsers = JSON.parse(cData);
-    } catch {}
-
     let customPasswordCount = 0;
     allMembers.forEach((m) => {
-      if (changedUsers[m.id.toLowerCase()] || changedUsers[m.id]) {
+      if (this.hasCustomPassword(m.id)) {
         customPasswordCount++;
       }
     });
 
     allOfficials.forEach((off) => {
-      if (changedUsers[off.username.toLowerCase()] || changedUsers[off.username]) {
+      if (this.hasCustomPassword(off.username)) {
         customPasswordCount++;
       }
     });
@@ -1785,15 +2262,19 @@ class StorageService {
     };
   }
 
-
   public getUserPassword(usernameOrId: string): string {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PASSWORDS);
       if (data) {
         const passwords = JSON.parse(data);
-        const key = usernameOrId.trim().toLowerCase();
-        if (passwords[key]) {
-          return passwords[key];
+        const aliases = this.getAllAliasesForUser(usernameOrId);
+        for (const alias of aliases) {
+          if (passwords[alias.toLowerCase()]) {
+            return passwords[alias.toLowerCase()];
+          }
+          if (passwords[alias]) {
+            return passwords[alias];
+          }
         }
       }
     } catch (e) {
@@ -1804,30 +2285,61 @@ class StorageService {
   }
 
   /**
+   * Checks whether a user has set a custom personal password (non-default).
+   */
+  public hasCustomPassword(usernameOrId: string): boolean {
+    if (!usernameOrId) return false;
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PASSWORDS);
+      const cData = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
+      if (data) {
+        const passwords = JSON.parse(data);
+        const changedUsers = cData ? JSON.parse(cData) : {};
+        const aliases = this.getAllAliasesForUser(usernameOrId);
+        for (const alias of aliases) {
+          const lower = alias.toLowerCase();
+          const hasPass = Boolean(passwords[lower] || passwords[alias]);
+          const hasChanged = Boolean(changedUsers[lower] || changedUsers[alias]);
+          if (hasPass && hasChanged) {
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error checking custom password:', e);
+    }
+    return false;
+  }
+
+  /**
    * Checks whether a user is required to change their password on first-time login.
-   * By default, every user who has not explicitly changed their initial default password must change it.
+   * If the user already has a custom password set, they are NOT required to change it.
    */
   public isPasswordChangeRequired(usernameOrId: string): boolean {
     if (!usernameOrId) return true;
+    if (this.hasCustomPassword(usernameOrId)) {
+      return false;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
       if (data) {
         const changedUsers = JSON.parse(data);
-        const key = usernameOrId.trim().toLowerCase();
-        if (changedUsers[key]) {
-          return false;
+        const aliases = this.getAllAliasesForUser(usernameOrId);
+        for (const alias of aliases) {
+          if (changedUsers[alias.toLowerCase()] || changedUsers[alias]) {
+            return false;
+          }
         }
       }
     } catch (e) {
       console.error('Error reading password changed registry:', e);
     }
-    // All users are forced to change their password after first time login!
     return true;
   }
 
   /**
    * Allows any logged-in user to change their initial or current password anytime.
-   * Enforces security policies (minimum 6 characters, cannot be default password).
+   * Automatically updates all aliases (username, member ID, share number, etc.).
    */
   public changeUserPassword(
     usernameOrId: string,
@@ -1835,7 +2347,6 @@ class StorageService {
     currentUser: User
   ): { success: boolean; message: string } {
     const cleanTarget = usernameOrId.trim();
-    const lowerTarget = cleanTarget.toLowerCase();
 
     if (!newPassword || newPassword.trim().length === 0) {
       throw new Error('New password cannot be empty.');
@@ -1852,6 +2363,15 @@ class StorageService {
       throw new Error(`For security, your new password cannot be the system default password (${currentDefault}). Please choose a unique secure personal password.`);
     }
 
+    // Resolve all aliases to update simultaneously
+    const targetAliases = this.getAllAliasesForUser(cleanTarget);
+    const userAliases = currentUser.username ? this.getAllAliasesForUser(currentUser.username) : [];
+    const memberAliases = currentUser.memberId ? this.getAllAliasesForUser(currentUser.memberId) : [];
+
+    const allAliasesToUpdate = Array.from(
+      new Set([cleanTarget, cleanTarget.toLowerCase(), ...targetAliases, ...userAliases, ...memberAliases])
+    );
+
     // Update passwords registry
     let passwords: Record<string, string> = {};
     try {
@@ -1859,35 +2379,25 @@ class StorageService {
       if (data) passwords = JSON.parse(data);
     } catch {}
 
-    passwords[lowerTarget] = cleanPass;
-    passwords[cleanTarget] = cleanPass;
-    if (currentUser.memberId) {
-      passwords[currentUser.memberId.toLowerCase()] = cleanPass;
-      passwords[currentUser.memberId] = cleanPass;
-    }
-    if (currentUser.username) {
-      passwords[currentUser.username.toLowerCase()] = cleanPass;
-      passwords[currentUser.username] = cleanPass;
-    }
+    allAliasesToUpdate.forEach((alias) => {
+      passwords[alias.toLowerCase()] = cleanPass;
+      passwords[alias] = cleanPass;
+    });
+
     localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
 
-    // Mark user as having completed first-time password change
+    // Mark user as having completed password change
     let changedUsers: Record<string, boolean> = {};
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
       if (data) changedUsers = JSON.parse(data);
     } catch {}
 
-    changedUsers[lowerTarget] = true;
-    changedUsers[cleanTarget] = true;
-    if (currentUser.memberId) {
-      changedUsers[currentUser.memberId.toLowerCase()] = true;
-      changedUsers[currentUser.memberId] = true;
-    }
-    if (currentUser.username) {
-      changedUsers[currentUser.username.toLowerCase()] = true;
-      changedUsers[currentUser.username] = true;
-    }
+    allAliasesToUpdate.forEach((alias) => {
+      changedUsers[alias.toLowerCase()] = true;
+      changedUsers[alias] = true;
+    });
+
     localStorage.setItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS, JSON.stringify(changedUsers));
 
     this.logAudit(
@@ -1895,13 +2405,13 @@ class StorageService {
       'UPDATE',
       'USER',
       cleanTarget,
-      `User ${currentUser.name} (${cleanTarget}) successfully modified their password.`
+      `User ${currentUser.name} (${cleanTarget}) successfully modified and secured their password.`
     );
 
     this.notify();
     return {
       success: true,
-      message: 'Password successfully updated. Your account is now secured.',
+      message: 'New password successfully saved and secured. Please use this password for all future logins.',
     };
   }
 
@@ -1926,61 +2436,79 @@ class StorageService {
     // Check if target is Saif Ahmed Sakil (Excluded from Delegated Admin)
     const isTargetSakil =
       lowerTarget === 'ssakil' ||
+      lowerTarget === 'sakil' ||
+      lowerTarget === 'saif' ||
       lowerTarget === 'saif ahmed sakil' ||
       lowerTarget === 'phsm-001' ||
+      lowerTarget === '1' ||
       lowerTarget === 'usr-admin-root';
 
     if (currentUser.role === 'DELEGATED_ADMIN' && isTargetSakil) {
       throw new Error('Access Denied: Delegated Admin is strictly excluded from resetting password for Root System Admin Saif Ahmed Sakil.');
     }
 
-    // Default to the system default password configured by System Admin
     const systemDefault = this.getSystemDefaultPassword();
-    const effectivePass =
-      currentUser.role === 'DELEGATED_ADMIN'
-        ? systemDefault // Delegated Admin always resets to the system default password set by System Admin
-        : (newPassword && newPassword.trim().length > 0 ? newPassword.trim() : systemDefault);
+    const isCustomReset = Boolean(
+      currentUser.role === 'SYSTEM_ADMIN' &&
+      newPassword &&
+      newPassword.trim().length > 0 &&
+      newPassword.trim() !== systemDefault
+    );
+
+    const effectivePass = isCustomReset ? newPassword!.trim() : systemDefault;
 
     if (effectivePass.length < 6) {
       throw new Error('Password must be at least 6 characters long.');
     }
 
+    const aliases = this.getAllAliasesForUser(cleanTarget);
+    const allAliases = Array.from(new Set([cleanTarget, lowerTarget, ...aliases]));
+
     let passwords: Record<string, string> = {};
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PASSWORDS);
-      if (data) {
-        passwords = JSON.parse(data);
-      }
+      if (data) passwords = JSON.parse(data);
     } catch {}
 
-    passwords[lowerTarget] = effectivePass;
-    passwords[cleanTarget] = effectivePass;
+    let changedUsers: Record<string, boolean> = {};
+    try {
+      const cData = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
+      if (cData) changedUsers = JSON.parse(cData);
+    } catch {}
+
+    if (isCustomReset) {
+      allAliases.forEach((alias) => {
+        passwords[alias.toLowerCase()] = effectivePass;
+        passwords[alias] = effectivePass;
+        // Require them to set their own personal password on next login
+        delete changedUsers[alias.toLowerCase()];
+        delete changedUsers[alias];
+      });
+    } else {
+      // Reset back to system default: remove custom passwords for these aliases
+      allAliases.forEach((alias) => {
+        delete passwords[alias.toLowerCase()];
+        delete passwords[alias];
+        delete changedUsers[alias.toLowerCase()];
+        delete changedUsers[alias];
+      });
+    }
 
     localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
-
-    // Reset password change status so the user will be FORCED to change it again on next login
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
-      if (data) {
-        const changedUsers = JSON.parse(data);
-        delete changedUsers[lowerTarget];
-        delete changedUsers[cleanTarget];
-        localStorage.setItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS, JSON.stringify(changedUsers));
-      }
-    } catch {}
+    localStorage.setItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS, JSON.stringify(changedUsers));
 
     this.logAudit(
       currentUser,
       'PASSWORD_RESET',
       'USER',
       cleanTarget,
-      `${currentUser.name} (${currentUser.role}) reset password for user ${cleanTarget} to default. Forced change required on next login.`
+      `${currentUser.name} (${currentUser.role}) reset password for user ${cleanTarget} to ${isCustomReset ? 'assigned password' : 'system default (' + systemDefault + ')'}. Forced change required on next login.`
     );
 
     this.notify();
     return {
       success: true,
-      message: `Password for ${cleanTarget} successfully reset to default ("${effectivePass}"). The user will be required to change it upon next login.`,
+      message: `Password for ${cleanTarget} successfully reset to ${isCustomReset ? 'assigned password' : 'system default ("' + systemDefault + '")'}. User will be required to change it upon next login.`,
     };
   }
 
@@ -3201,6 +3729,7 @@ class StorageService {
         queries,
         incomeCategories,
         expenseCategories,
+        shareTransfers: this.getShareTransfers(),
         lastSync: nowIso,
       },
     };
@@ -3252,6 +3781,7 @@ class StorageService {
         budgets: parsed.data?.annualBudgets?.length || 0,
         documents: parsed.data?.documents?.length || 0,
         passwords: parsed.data?.passwords ? Object.keys(parsed.data.passwords).length : 0,
+        shareTransfers: parsed.data?.shareTransfers?.length || 0,
       },
       jsonPayload: rawJson,
     };
@@ -3481,6 +4011,10 @@ class StorageService {
       if (parsed.data.auditLogs && Array.isArray(parsed.data.auditLogs)) {
         localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(parsed.data.auditLogs));
         counts.auditLogs = parsed.data.auditLogs.length;
+        restoredCount++;
+      }
+      if (parsed.data.shareTransfers && Array.isArray(parsed.data.shareTransfers)) {
+        localStorage.setItem(STORAGE_KEYS.SHARE_TRANSFERS, JSON.stringify(parsed.data.shareTransfers));
         restoredCount++;
       }
 

@@ -34,6 +34,10 @@ export interface ProfileUpdateRequest {
   proposedPhotoUrl?: string; // 2x2 passport photo data URL
   currentPhotoUrl?: string;
   isPhotoOnly?: boolean;
+  isNameCorrectionOnly?: boolean;
+  currentName?: string;
+  correctionReason?: string;
+  supportingDocumentRef?: string;
   requestedAt: string;
   requestedBy: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -80,6 +84,16 @@ export interface Member {
   spouseMobile?: string;
   emergencyContact?: string;
 
+  // Multi-share holding & transfer history
+  additionalShares?: number[];
+  transferredShares?: {
+    shareNumber: number;
+    transferredToMemberId: string;
+    transferredToMemberName: string;
+    transferredAt: string;
+    transferRecordId: string;
+  }[];
+
   pendingUpdate?: {
     name: string;
     phone: string;
@@ -95,6 +109,10 @@ export interface Member {
     emergencyContact?: string;
     proposedPhotoUrl?: string;
     requestedAt: string;
+    isNameCorrectionOnly?: boolean;
+    currentName?: string;
+    correctionReason?: string;
+    supportingDocumentRef?: string;
   };
 }
 
@@ -303,12 +321,13 @@ export interface AuditLog {
     | 'EC_VOTE' 
     | 'HONORARIUM_UPDATE'
     | 'MEMBER_UPDATE'
+    | 'SHARE_TRANSFER'
     | 'LOCK_USER'
     | 'UNLOCK_USER'
     | 'PASSWORD_RESET'
     | 'BUDGET_UPDATE'
     | 'LOGIN';
-  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET';
+  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET' | 'SHARE_TRANSFER';
   entityId: string;
   details: string;
   ipAddress?: string;
@@ -556,7 +575,81 @@ export interface SystemSnapshotRecord {
     budgets: number;
     documents: number;
     passwords: number;
+    shareTransfers?: number;
   };
   jsonPayload: string;
 }
+
+export type ShareTransferCategory =
+  | 'FULL_OWNERSHIP_TRANSFER'
+  | 'CAPITAL_BALANCE_TRANSFER'
+  | 'FAMILY_NOMINEE_INHERITANCE'
+  | 'SECONDARY_MARKET_SALE'
+  | 'DIRECTOR_QUOTA_REALLOCATION';
+
+export interface ShareTransferRecord {
+  id: string; // e.g., 'STX-2026-001'
+  transferDate: string; // YYYY-MM-DD
+  transferCategory: ShareTransferCategory;
+
+  // Source / Transferor
+  fromMemberId: string;
+  fromMemberName: string;
+  fromShareNumber: number;
+  fromDirectorKey: string;
+  fromDirectorName: string;
+
+  // Destination / Transferee
+  toMemberId: string;
+  toMemberName: string;
+  toShareNumber: number;
+  toDirectorKey: string;
+  toDirectorName: string;
+
+  // Transferred share number
+  transferredShareNumber: number;
+
+  // Financial specifics
+  transferredAmount: number; // in BDT
+  transferFeeBDT: number; // in BDT
+  transferFeePayer: 'TRANSFEREE' | 'TRANSFEROR' | 'EXEMPT';
+  paymentMethod: PaymentMethod;
+  bankReferenceNumber?: string;
+
+  // Governance & Legal Authority
+  resolutionNumber: string; // e.g., 'EC-RES-2026-024'
+  deedOrStampNumber?: string;
+  transferReason: string;
+  remarks: string;
+
+  // Official Recorder
+  recordedByUsername: string;
+  recordedByName: string;
+  recordedByRole: UserRole | string;
+  recordedByDesignation?: string;
+  recordedAt: string; // ISO date-time
+
+  status: 'COMPLETED' | 'CANCELLED';
+  outIncomeId?: string; // Trx ID for transfer out
+  inIncomeId?: string; // Trx ID for transfer in
+  feeIncomeId?: string; // Trx ID for society fee
+}
+
+export interface RecordShareTransferInput {
+  fromMemberId: string;
+  toMemberId: string;
+  transferredShareNumber: number;
+  transferredAmount: number;
+  transferFeeBDT: number;
+  transferFeePayer: 'TRANSFEREE' | 'TRANSFEROR' | 'EXEMPT';
+  transferCategory: ShareTransferCategory;
+  transferDate: string;
+  paymentMethod: PaymentMethod;
+  bankReferenceNumber?: string;
+  resolutionNumber: string;
+  deedOrStampNumber?: string;
+  transferReason: string;
+  remarks?: string;
+}
+
 

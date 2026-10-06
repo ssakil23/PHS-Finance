@@ -156,6 +156,7 @@ export default function App() {
             incomes={incomes}
             expenses={expenses}
             members={members}
+            currentUser={currentUser}
             onSelectMemberStatement={handleSelectMemberStatement}
           />
         )}

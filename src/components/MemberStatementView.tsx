@@ -11,6 +11,7 @@ import {
   CreditCard,
   Lock,
   ArrowRight,
+  ArrowLeftRight,
   ShieldCheck,
   Search,
   FileText,
@@ -132,6 +133,11 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
   const memberAlerts = useMemo(() => {
     return storageService.getOverdueAlertsForMember(currentMember.id);
   }, [currentMember.id, actionFeedback]);
+
+  // Share transfer history for active member
+  const memberTransfers = useMemo(() => {
+    return storageService.getShareTransfersByMember(currentMember.id);
+  }, [currentMember.id, incomes]);
 
   const latestAlert = memberAlerts[0];
 
@@ -642,6 +648,22 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
               <span className="text-slate-400">Registered Share Number:</span>
               <span className="font-mono font-bold text-white">Share #{currentMember.shareNumber} of 144</span>
             </div>
+            {currentMember.additionalShares && currentMember.additionalShares.length > 0 && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Acquired Shares:</span>
+                <span className="font-mono text-emerald-300 font-bold">
+                  {currentMember.additionalShares.map((s) => `#${s}`).join(', ')}
+                </span>
+              </div>
+            )}
+            {currentMember.transferredShares && currentMember.transferredShares.length > 0 && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Transferred Out Shares:</span>
+                <span className="font-mono text-amber-300">
+                  {currentMember.transferredShares.map((t) => `#${t.shareNumber}`).join(', ')}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
               <span className="text-slate-400">Controlling Director:</span>
               <span className="font-semibold text-emerald-400">{currentMember.controllingDirectorName}</span>
@@ -796,7 +818,18 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
                       {dep.date}
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-200">
-                      {dep.category}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {dep.category?.includes('Transfer Out') ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-800">
+                            Transfer Out
+                          </span>
+                        ) : dep.category?.includes('Transfer In') ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                            Transfer In
+                          </span>
+                        ) : null}
+                        <span>{dep.category}</span>
+                      </div>
                     </td>
                     <td className="py-3.5 px-4 text-slate-300">
                       {dep.paymentMethod}
@@ -804,7 +837,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
                     <td className="py-3.5 px-4 font-mono text-slate-400">
                       {dep.referenceNumber || 'N/A'}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400">
+                    <td className={`py-3.5 px-4 text-right font-mono font-bold ${dep.amount < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                       {formatBDT(dep.amount)}
                     </td>
                     <td className="py-3.5 px-3 text-center">
@@ -841,6 +874,101 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* SHARE CONVEYANCE & OFFICIAL TRANSFER RECORDS (IF ANY) */}
+      {memberTransfers.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                  Share Ownership Conveyance
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  {memberTransfers.length} Recorded Transfer{memberTransfers.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <ArrowLeftRight className="w-4 h-4 text-emerald-400" />
+                <span>Official Share Transfer Registry Records</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Formal share conveyances executed by Executive Committee resolution involving Member {currentMember.id}.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px]">
+                <tr>
+                  <th className="py-2.5 px-4">Transfer Ref</th>
+                  <th className="py-2.5 px-4">Date</th>
+                  <th className="py-2.5 px-4">Role</th>
+                  <th className="py-2.5 px-4">Share #</th>
+                  <th className="py-2.5 px-4">Counterparty</th>
+                  <th className="py-2.5 px-4 text-right">Transferred Capital</th>
+                  <th className="py-2.5 px-4">Resolution Ref</th>
+                  <th className="py-2.5 px-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 bg-slate-900/50">
+                {memberTransfers.map((t) => {
+                  const isTransferor = t.fromMemberId.toLowerCase() === currentMember.id.toLowerCase();
+                  return (
+                    <tr key={t.id} className="hover:bg-slate-800/50 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                        {t.id}
+                      </td>
+                      <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                        {t.transferDate}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            isTransferor
+                              ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                              : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          }`}
+                        >
+                          {isTransferor ? 'Transferor (Out)' : 'Transferee (In)'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-bold text-white">
+                        Share #{t.transferredShareNumber}
+                      </td>
+                      <td className="py-3 px-4 text-slate-200">
+                        {isTransferor ? (
+                          <span>
+                            To: <strong className="text-emerald-300">{t.toMemberName}</strong> ({t.toMemberId})
+                          </span>
+                        ) : (
+                          <span>
+                            From: <strong className="text-rose-300">{t.fromMemberName}</strong> ({t.fromMemberId})
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold">
+                        <span className={isTransferor ? 'text-rose-400' : 'text-emerald-400'}>
+                          {isTransferor ? '-' : '+'}{formatBDT(t.transferredAmount)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
+                        {t.resolutionNumber}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                          {t.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* SECTION: TOTAL PROJECT EXPENSE & CATEGORY / SUB-CATEGORY DETAILED BREAKDOWN */}

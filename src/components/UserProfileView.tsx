@@ -419,23 +419,27 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       'Emergency Contact',
       'Status',
     ];
-    const rows = filteredMembers.map((m) => [
-      `"${m.id}"`,
-      `"${m.shareNumber}"`,
-      `"${(m.name || '').replace(/"/g, '""')}"`,
-      `"${(m.controllingDirectorName || '').replace(/"/g, '""')}"`,
-      `"${m.phone || ''}"`,
-      `"${m.email || ''}"`,
-      `"${m.nidOrBirthId || ''}"`,
-      `"${m.dob || ''}"`,
-      `"${(m.education || '').replace(/"/g, '""')}"`,
-      `"${(m.permanentAddress || '').replace(/"/g, '""')}"`,
-      `"${(m.currentAddress || m.address || '').replace(/"/g, '""')}"`,
-      `"${(m.spouseName || '').replace(/"/g, '""')}"`,
-      `"${m.spouseMobile || ''}"`,
-      `"${(m.emergencyContact || '').replace(/"/g, '""')}"`,
-      `"${m.status}"`,
-    ]);
+    const rows = filteredMembers.map((m) => {
+      const isOwner = Boolean(currentUser?.memberId && m.id.toLowerCase() === currentUser.memberId.toLowerCase());
+      const canAccessPrivate = Boolean(isOfficialOrAdmin || isOwner);
+      return [
+        `"${m.id}"`,
+        `"${m.shareNumber}"`,
+        `"${(m.name || '').replace(/"/g, '""')}"`,
+        `"${(m.controllingDirectorName || '').replace(/"/g, '""')}"`,
+        `"${m.phone || ''}"`,
+        `"${m.email || ''}"`,
+        `"${m.nidOrBirthId || ''}"`,
+        `"${m.dob || ''}"`,
+        `"${(m.education || '').replace(/"/g, '""')}"`,
+        `"${(m.permanentAddress || '').replace(/"/g, '""')}"`,
+        `"${(m.currentAddress || m.address || '').replace(/"/g, '""')}"`,
+        `"${canAccessPrivate ? (m.spouseName || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.spouseMobile || '') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.emergencyContact || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
+        `"${m.status}"`,
+      ];
+    });
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -673,15 +677,19 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     }
 
     try {
-      const res = storageService.changeUserPassword(currentUser.username, selfNewPass.trim(), currentUser);
-      setSelfPassSuccess(res.message);
-      setSuccessBanner(res.message);
-      setTimeout(() => {
-        setShowSelfPasswordModal(false);
-        setSelfNewPass('');
-        setSelfConfirmPass('');
-        setSelfPassSuccess('');
-      }, 1500);
+      const res = authService.completePasswordChange(selfNewPass.trim());
+      if (res.success) {
+        setSelfPassSuccess(res.message);
+        setSuccessBanner(res.message);
+        setTimeout(() => {
+          setShowSelfPasswordModal(false);
+          setSelfNewPass('');
+          setSelfConfirmPass('');
+          setSelfPassSuccess('');
+        }, 1500);
+      } else {
+        setSelfPassError(res.message);
+      }
     } catch (err: any) {
       setSelfPassError(err.message || 'Failed to update password.');
     }
@@ -730,9 +738,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       const matchEdu = (m.education || '').toLowerCase().includes(q);
       const matchPerm = (m.permanentAddress || '').toLowerCase().includes(q);
       const matchCurr = (m.currentAddress || m.address || '').toLowerCase().includes(q);
-      const matchSpouse = (m.spouseName || '').toLowerCase().includes(q);
-      const matchSpouseMob = (m.spouseMobile || '').toLowerCase().includes(q);
-      const matchEmerg = (m.emergencyContact || '').toLowerCase().includes(q);
+      const isOwner = Boolean(currentUser?.memberId && m.id.toLowerCase() === currentUser.memberId.toLowerCase());
+      const canAccessPrivate = Boolean(isOfficialOrAdmin || isOwner);
+      const matchSpouse = canAccessPrivate && (m.spouseName || '').toLowerCase().includes(q);
+      const matchSpouseMob = canAccessPrivate && (m.spouseMobile || '').toLowerCase().includes(q);
+      const matchEmerg = canAccessPrivate && (m.emergencyContact || '').toLowerCase().includes(q);
       const matchDirector = (m.controllingDirectorName || '').toLowerCase().includes(q);
       const matchStatus = (m.status || '').toLowerCase().includes(q);
       return (
@@ -1789,9 +1799,36 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     <th className="py-3 px-4 whitespace-nowrap">Education</th>
                     <th className="py-3 px-4 whitespace-nowrap">Permanent Address</th>
                     <th className="py-3 px-4 whitespace-nowrap">Current Address</th>
-                    <th className="py-3 px-3.5 whitespace-nowrap">Spouse Name</th>
-                    <th className="py-3 px-3.5 whitespace-nowrap">Spouse Mobile</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Emergency Contact</th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Spouse Name</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Protected: Owner & Officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Spouse Mobile</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Protected: Owner & Officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Emergency Contact</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Protected: Owner & Officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
                     <th className="py-3 px-3 whitespace-nowrap text-center">Status</th>
                     <th className="py-3 px-4 whitespace-nowrap text-right sticky right-0 z-20 bg-slate-950 border-l border-slate-800/80 shadow-md">
                       Admin Action
@@ -1799,14 +1836,20 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
-                  {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-slate-800/50 transition group">
-                      {/* 1. Member Id (Sticky Left) */}
-                      <td className="py-3 px-3.5 font-mono font-bold whitespace-nowrap sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800/90 border-r border-slate-800/80">
-                        <span className="px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/80 text-emerald-400">
-                          {m.id}
-                        </span>
-                      </td>
+                  {filteredMembers.map((m) => {
+                    const isRowOwner = Boolean(
+                      currentUser?.memberId && m.id.toLowerCase() === currentUser.memberId.toLowerCase()
+                    );
+                    const canAccessRowPrivate = Boolean(isOfficialOrAdmin || isRowOwner);
+
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-800/50 transition group">
+                        {/* 1. Member Id (Sticky Left) */}
+                        <td className="py-3 px-3.5 font-mono font-bold whitespace-nowrap sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800/90 border-r border-slate-800/80">
+                          <span className="px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/80 text-emerald-400">
+                            {m.id}
+                          </span>
+                        </td>
 
                       {/* 2. Share# */}
                       <td className="py-3 px-3 font-mono font-bold text-slate-200 whitespace-nowrap">
@@ -1936,30 +1979,48 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
                       {/* 12. Spouse Name */}
                       <td className="py-3 px-3.5 text-slate-300 whitespace-nowrap text-[11px]">
-                        <div className="flex items-center gap-1.5">
-                          <Heart className="w-3 h-3 text-rose-400/80 shrink-0" />
-                          <span>{m.spouseName || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5">
+                            <Heart className="w-3 h-3 text-rose-400/80 shrink-0" />
+                            <span>{m.spouseName || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-slate-500 select-none" title="Protected: Visible only to shareholder owner and society officials">
+                            <Lock className="w-3 h-3 text-slate-600 shrink-0" />
+                            <span className="italic text-[10px]">Confidential</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 13. Spouse Mobile */}
                       <td className="py-3 px-3.5 font-mono text-slate-400 whitespace-nowrap text-[11px]">
-                        {m.spouseMobile ? (
-                          <a href={`tel:${m.spouseMobile}`} className="hover:text-emerald-300 transition-colors flex items-center gap-1.5">
-                            <Phone className="w-3 h-3 text-slate-500 shrink-0" />
-                            <span>{m.spouseMobile}</span>
-                          </a>
+                        {canAccessRowPrivate ? (
+                          m.spouseMobile ? (
+                            <a href={`tel:${m.spouseMobile}`} className="hover:text-emerald-300 transition-colors flex items-center gap-1.5">
+                              <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span>{m.spouseMobile}</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-600">N/A</span>
+                          )
                         ) : (
-                          <span className="text-slate-600">N/A</span>
+                          <span className="text-slate-600 select-none font-mono" title="Protected contact">••••••••••••</span>
                         )}
                       </td>
 
                       {/* 14. Emergency Contact */}
                       <td className="py-3 px-4 text-slate-300 whitespace-nowrap text-[11px]">
-                        <div className="flex items-center gap-1.5 font-mono text-[11px] text-amber-300/90" title={m.emergencyContact}>
-                          <PhoneCall className="w-3 h-3 text-amber-400 shrink-0" />
-                          <span>{m.emergencyContact || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-amber-300/90" title={m.emergencyContact}>
+                            <PhoneCall className="w-3 h-3 text-amber-400 shrink-0" />
+                            <span>{m.emergencyContact || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-slate-500 select-none" title="Protected: Visible only to shareholder owner and society officials">
+                            <Lock className="w-3 h-3 text-slate-600 shrink-0" />
+                            <span className="italic text-[10px]">Restricted</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 15. Status */}
@@ -2041,7 +2102,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>
@@ -2821,32 +2883,72 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </div>
 
               {/* Category 5: Family & Emergency Contact */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider flex items-center gap-1.5">
-                  <Heart className="w-3.5 h-3.5" />
-                  <span>Spouse & Emergency Contact</span>
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Spouse Name</span>
-                    <span className="text-slate-200 font-medium block mt-0.5">{selectedDossierMember.spouseName || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Spouse Mobile</span>
-                    {selectedDossierMember.spouseMobile ? (
-                      <a href={`tel:${selectedDossierMember.spouseMobile}`} className="font-mono text-slate-200 hover:text-emerald-400 block mt-0.5">
-                        {selectedDossierMember.spouseMobile}
-                      </a>
+              {(() => {
+                const isDossierOwner = Boolean(
+                  currentUser?.memberId &&
+                  selectedDossierMember.id.toLowerCase() === currentUser.memberId.toLowerCase()
+                );
+                const canAccessDossierPrivate = Boolean(isOfficialOrAdmin || isDossierOwner);
+
+                return (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Heart className="w-3.5 h-3.5" />
+                        <span>Spouse & Emergency Contact</span>
+                      </span>
+                      {!canAccessDossierPrivate && (
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          <span>Confidential to Shareholder</span>
+                        </span>
+                      )}
+                    </span>
+
+                    {canAccessDossierPrivate ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Spouse Name</span>
+                          <span className="text-slate-200 font-medium block mt-0.5">{selectedDossierMember.spouseName || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Spouse Mobile</span>
+                          {selectedDossierMember.spouseMobile ? (
+                            <a href={`tel:${selectedDossierMember.spouseMobile}`} className="font-mono text-slate-200 hover:text-emerald-400 block mt-0.5">
+                              {selectedDossierMember.spouseMobile}
+                            </a>
+                          ) : (
+                            <span className="text-slate-500 block mt-0.5">N/A</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
+                          <span className="font-mono text-amber-300 font-medium block mt-0.5">{selectedDossierMember.emergencyContact || 'N/A'}</span>
+                        </div>
+                      </div>
                     ) : (
-                      <span className="text-slate-500 block mt-0.5">N/A</span>
+                      <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                            <Lock className="w-4 h-4 text-slate-400" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-300 text-xs">
+                              Private Contact Details Protected
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Spouse information and emergency contacts of fellow shareholders are confidential and visible only to the owner and authorized Society Officials.
+                            </div>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-500 font-semibold uppercase tracking-wider shrink-0 ml-3">
+                          Protected
+                        </span>
+                      </div>
                     )}
                   </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
-                    <span className="font-mono text-amber-300 font-medium block mt-0.5">{selectedDossierMember.emergencyContact || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
             {/* Modal Actions */}

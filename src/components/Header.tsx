@@ -81,14 +81,18 @@ export const Header: React.FC<HeaderProps> = ({
     }
 
     try {
-      const res = storageService.changeUserPassword(currentUser.username, newPassword.trim(), currentUser);
-      setPassSuccess(res.message);
-      setTimeout(() => {
-        setShowSelfPassModal(false);
-        setNewPassword('');
-        setConfirmPassword('');
-        setPassSuccess('');
-      }, 1500);
+      const res = authService.completePasswordChange(newPassword.trim());
+      if (res.success) {
+        setPassSuccess(res.message);
+        setTimeout(() => {
+          setShowSelfPassModal(false);
+          setNewPassword('');
+          setConfirmPassword('');
+          setPassSuccess('');
+        }, 1500);
+      } else {
+        setPassError(res.message);
+      }
     } catch (err: any) {
       setPassError(err.message || 'Failed to update password.');
     }
