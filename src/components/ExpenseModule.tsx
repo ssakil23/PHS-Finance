@@ -14,11 +14,13 @@ import {
   Printer,
   ShieldCheck,
   FolderTree,
+  Upload,
 } from 'lucide-react';
 import { ExpenseEntry, User as UserType, TransactionTier } from '../types';
 import { formatBDT } from '../utils/calculations';
 import { storageService } from '../services/storageService';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { ExpenseCSVImportModal } from './ExpenseCSVImportModal';
 
 interface ExpenseModuleProps {
   expenses: ExpenseEntry[];
@@ -54,6 +56,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({
   const [tierFilter, setTierFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showCSVImportModal, setShowCSVImportModal] = useState(false);
+  const [successBanner, setSuccessBanner] = useState<string>('');
 
   // Dynamic Categories & Modal
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -255,6 +259,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({
             <Download className="w-3.5 h-3.5 text-rose-400" />
             <span>Export CSV</span>
           </button>
+          {canMakeEntry && (
+            <button
+              onClick={() => setShowCSVImportModal(true)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-white border border-rose-800/60 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow"
+              title="Bulk import operational expenses from CSV using predefined template"
+            >
+              <Upload className="w-3.5 h-3.5 text-rose-400" />
+              <span>Import CSV</span>
+            </button>
+          )}
           {canMakeEntry ? (
             <button
               onClick={() => setShowAddModal(true)}
@@ -274,6 +288,14 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({
           )}
         </div>
       </div>
+
+      {/* Success Notification Banner */}
+      {successBanner && (
+        <div className="p-3.5 bg-emerald-950/60 border border-emerald-800/80 rounded-xl text-xs text-emerald-300 flex items-center gap-2 shadow-lg animate-in fade-in duration-150">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{successBanner}</span>
+        </div>
+      )}
 
       {!canMakeEntry && (
         <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs flex items-center justify-between gap-3">
@@ -708,6 +730,19 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({
         incomes={storageService.getIncomes()}
         expenses={expenses}
       />
+
+      {/* Bulk Expense CSV Import Modal */}
+      {showCSVImportModal && (
+        <ExpenseCSVImportModal
+          currentUser={currentUser}
+          isOpen={showCSVImportModal}
+          onClose={() => setShowCSVImportModal(false)}
+          onSuccess={(count, total) => {
+            setSuccessBanner(`Successfully bulk imported ${count} operational expense vouchers totaling ${formatBDT(total)}.`);
+            setTimeout(() => setSuccessBanner(''), 5000);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   FileText,
   BadgePercent,
+  Calculator,
 } from 'lucide-react';
 import {
   IncomeEntry,
@@ -58,6 +59,7 @@ interface DirectorSummaryViewProps {
   members: Member[];
   currentUser?: User | null;
   onSelectMemberStatement?: (memberId: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const DirectorSummaryView: React.FC<DirectorSummaryViewProps> = ({
@@ -66,6 +68,7 @@ export const DirectorSummaryView: React.FC<DirectorSummaryViewProps> = ({
   members,
   currentUser,
   onSelectMemberStatement,
+  onNavigateTab,
 }) => {
   const summaries = computeDirectorSummaries(incomes, expenses);
   const financials = computeProjectFinancials(incomes, expenses);
@@ -486,6 +489,17 @@ export const DirectorSummaryView: React.FC<DirectorSummaryViewProps> = ({
             <ArrowLeftRight className="w-3.5 h-3.5" />
             <span>Record Share Transfer</span>
           </button>
+
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('directors_calc')}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-purple-950/90 to-indigo-950/90 hover:from-purple-900 hover:to-indigo-900 text-purple-200 border border-purple-600/70 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition"
+              title="Open Director's Calc: 10% Management Fee, Operating Overhead & 75/25 Tranches"
+            >
+              <Calculator className="w-3.5 h-3.5 text-purple-400" />
+              <span>Director's Calc</span>
+            </button>
+          )}
 
           {activeTab === 'MATRIX' ? (
             <button

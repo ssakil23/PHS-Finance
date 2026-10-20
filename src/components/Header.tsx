@@ -27,11 +27,13 @@ import {
   Database,
   Globe,
   Download,
+  Calculator,
 } from 'lucide-react';
 import { User } from '../types';
 import { authService } from '../services/authService';
 import { storageService } from '../services/storageService';
 import { PeriodicPasswordModal } from './PeriodicPasswordModal';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -173,6 +175,7 @@ export const Header: React.FC<HeaderProps> = ({
         { id: 'incomes', label: 'Income & Deposits', desc: 'General & sales collection entries' },
         { id: 'expenses', label: 'Expense Ledger', desc: 'Site development expenses across Tiers 1-5' },
         { id: 'directors', label: 'Director Share Matrix', desc: '6 Directors share allocation & equity' },
+        { id: 'directors_calc', label: "Director's Calc", desc: '10% Mgmt Fee, Overhead & 75/25 Tranches' },
         { id: 'member_statement', label: 'Member Ledger (144)', desc: '144 individual shareowner financial ledgers' },
         { id: 'community_chat', label: 'Info & Communication', desc: 'Documentations, Discussion Group & Query Window' },
         { id: 'user_profile', label: 'User Profiles & Approvals', desc: '144 shareholder registry & KYC verification' },
@@ -193,6 +196,8 @@ export const Header: React.FC<HeaderProps> = ({
         return TrendingDown;
       case 'directors':
         return FileSpreadsheet;
+      case 'directors_calc':
+        return Calculator;
       case 'member_statement':
         return Users;
       case 'community_chat':
@@ -438,6 +443,9 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </button>
             )}
+
+            {/* In-App Automated Notification Bell */}
+            <NotificationBell currentUser={currentUser} onNavigateTab={setActiveTab} />
 
             {currentUser && (
               <div className="flex items-center gap-2.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/80">

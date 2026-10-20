@@ -39,12 +39,17 @@ import {
   HardDrive,
   Camera,
   CheckCircle2,
+  SpellCheck,
+  Shield,
+  RefreshCw,
+  Upload,
 } from 'lucide-react';
 import { User, Member, ProfileUpdateRequest, OfficialUser } from '../types';
 import { storageService } from '../services/storageService';
 import { authService } from '../services/authService';
 import { PeriodicPasswordModal } from './PeriodicPasswordModal';
 import { PassportPhotoModal } from './PassportPhotoModal';
+import { MemberDataCSVImportModal } from './MemberDataCSVImportModal';
 
 interface UserProfileViewProps {
   currentUser: User | null;
@@ -57,6 +62,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [officials, setOfficials] = useState<OfficialUser[]>(storageService.getOfficials());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorFilter, setSelectedDirectorFilter] = useState('ALL');
+  const [showMemberImportModal, setShowMemberImportModal] = useState<boolean>(false);
 
   // Dossier Card Modal State (Detailed View of 16 Member Attributes)
   const [selectedDossierMember, setSelectedDossierMember] = useState<Member | null>(null);
@@ -79,6 +85,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   const [newSysDefaultInput, setNewSysDefaultInput] = useState(storageService.getSystemDefaultPassword());
   const [showPeriodicPasswordModal, setShowPeriodicPasswordModal] = useState(false);
   const [periodicStatus, setPeriodicStatus] = useState(() => storageService.getPeriodicPasswordStatus());
+
+  // Bulk Reset All Users Passwords State (System Admin only)
+  const [showResetAllModal, setShowResetAllModal] = useState(false);
+  const [excludeRootAdmin, setExcludeRootAdmin] = useState(true);
+  const [resetAllFeedback, setResetAllFeedback] = useState<{ error?: string; success?: string }>({});
+  const [isResettingAll, setIsResettingAll] = useState(false);
 
   // User Lock / Unlock State (System Admin & Delegated Admin)
   const [lockModalOpen, setLockModalOpen] = useState(false);
@@ -160,6 +172,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
   // Photo Reject Modal State
   const [rejectingPhotoMember, setRejectingPhotoMember] = useState<Member | null>(null);
   const [photoRejectReasonInput, setPhotoRejectReasonInput] = useState('');
+
+  // Name Spelling Correction Modal State
+  const [showNameCorrectionModal, setShowNameCorrectionModal] = useState(false);
+  const [nameCorrectionProposed, setNameCorrectionProposed] = useState('');
+  const [nameCorrectionReason, setNameCorrectionReason] = useState('Typo in registered spelling');
+  const [nameCorrectionDocRef, setNameCorrectionDocRef] = useState('');
+  const [nameCorrectionError, setNameCorrectionError] = useState('');
+  const [isSubmittingNameCorrection, setIsSubmittingNameCorrection] = useState(false);
 
   // Notification banners
   const [successBanner, setSuccessBanner] = useState('');
@@ -307,6 +327,48 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     }
   };
 
+  // Shareholder Name Spelling Correction Submission Handler
+  const handleSubmitNameCorrection = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    const memberId = myMemberId || myMemberRecord?.id;
+    if (!memberId) {
+      setNameCorrectionError('No shareholder record linked to your user account.');
+      return;
+    }
+    const cleanProposed = nameCorrectionProposed.trim();
+    if (!cleanProposed) {
+      setNameCorrectionError('Proposed corrected name cannot be blank.');
+      return;
+    }
+    if (cleanProposed.toLowerCase() === (myMemberRecord?.name || currentUser.name || '').toLowerCase()) {
+      setNameCorrectionError('Proposed corrected name is identical to your current registered name.');
+      return;
+    }
+
+    try {
+      setIsSubmittingNameCorrection(true);
+      setNameCorrectionError('');
+      storageService.submitNameCorrectionRequest(
+        memberId,
+        cleanProposed,
+        nameCorrectionReason,
+        nameCorrectionDocRef.trim() || undefined,
+        currentUser
+      );
+      setRequests(storageService.getProfileUpdateRequests());
+      setShowNameCorrectionModal(false);
+      setSuccessBanner(
+        `Name spelling correction request ("${cleanProposed}") submitted successfully! Awaiting review and approval by a System Admin, Delegated Admin, or designated Official.`
+      );
+      setTimeout(() => setSuccessBanner(''), 5000);
+    } catch (err: any) {
+      setNameCorrectionError(err.message || 'Failed to submit name spelling correction request.');
+    } finally {
+      setIsSubmittingNameCorrection(false);
+    }
+  };
+
   // Admin Direct Edit Handler
   const handleOpenDirectEdit = (member: Member) => {
     setDirectEditMember(member);
@@ -400,8 +462,27 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     setTimeout(() => setSuccessBanner(''), 4000);
   };
 
-  // Export Member Directory CSV (All 16 columns)
+  // Export Member Directory CSV (All 16 columns for Officials, Member Id, Name, Phone & Email Only for regular shareholders)
   const handleExportDirectoryCSV = () => {
+    if (!isOfficialOrAdmin) {
+      const headers = ['Member Id', 'Full Name', 'Phone', 'Email'];
+      const rows = filteredMembers.map((m) => [
+        `"${m.id}"`,
+        `"${(m.name || '').replace(/"/g, '""')}"`,
+        `"${m.phone || ''}"`,
+        `"${m.email || ''}"`,
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `PHS_Shareholder_Directory_Contacts_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     const headers = [
       'Member Id',
       'Share#',
@@ -424,20 +505,20 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       const canAccessPrivate = Boolean(isOfficialOrAdmin || isOwner);
       return [
         `"${m.id}"`,
-        `"${m.shareNumber}"`,
+        `"${canAccessPrivate ? m.shareNumber : '[CONFIDENTIAL]'}"`,
         `"${(m.name || '').replace(/"/g, '""')}"`,
-        `"${(m.controllingDirectorName || '').replace(/"/g, '""')}"`,
+        `"${canAccessPrivate ? (m.controllingDirectorName || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
         `"${m.phone || ''}"`,
         `"${m.email || ''}"`,
-        `"${m.nidOrBirthId || ''}"`,
-        `"${m.dob || ''}"`,
-        `"${(m.education || '').replace(/"/g, '""')}"`,
-        `"${(m.permanentAddress || '').replace(/"/g, '""')}"`,
-        `"${(m.currentAddress || m.address || '').replace(/"/g, '""')}"`,
+        `"${canAccessPrivate ? (m.nidOrBirthId || '') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.dob || '') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.education || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.permanentAddress || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
+        `"${canAccessPrivate ? (m.currentAddress || m.address || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
         `"${canAccessPrivate ? (m.spouseName || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
         `"${canAccessPrivate ? (m.spouseMobile || '') : '[CONFIDENTIAL]'}"`,
         `"${canAccessPrivate ? (m.emergencyContact || '').replace(/"/g, '""') : '[CONFIDENTIAL]'}"`,
-        `"${m.status}"`,
+        `"${canAccessPrivate ? m.status : '[CONFIDENTIAL]'}"`,
       ];
     });
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -452,10 +533,17 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
   const handleQuickApprove = (reqId: string) => {
     if (!currentUser) return;
+    const req = requests.find((r) => r.id === reqId);
     storageService.approveProfileUpdateRequest(reqId, currentUser);
     setRequests(storageService.getProfileUpdateRequests());
-    setSuccessBanner('Profile change approved and committed.');
-    setTimeout(() => setSuccessBanner(''), 3000);
+    if (req?.isNameCorrectionOnly) {
+      setSuccessBanner(
+        `Approved name spelling correction for Member ${req.memberId} ("${req.currentName || ''}" → "${req.proposedName}"). Central ledger updated.`
+      );
+    } else {
+      setSuccessBanner('Profile change approved and committed.');
+    }
+    setTimeout(() => setSuccessBanner(''), 4000);
   };
 
   const handleReject = (reqId: string) => {
@@ -604,6 +692,25 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
     }
   };
 
+  // Bulk Reset Password for All Users (System Admin Authority)
+  const handleResetAllUsers = () => {
+    if (!currentUser || currentUser.role !== 'SYSTEM_ADMIN') return;
+    const sysDefault = storageService.getSystemDefaultPassword();
+    const confirmed = window.confirm(
+      `CONFIRM MASS PASSWORD RESET FOR ALL USERS:\n\nAre you sure you want to reset passwords for ALL 144 shareholders and officials to the system default password ("${sysDefault}")?\n\n• All accounts will be immediately flagged and forced to create a new password on their next login.\n• Root System Admin password (Saif Ahmed Sakil) will be safely preserved.\n\nProceed with bulk reset?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = storageService.resetAllUsersPassword(currentUser, true);
+      setSuccessBanner(res.message);
+      setTimeout(() => setSuccessBanner(''), 5000);
+    } catch (err: any) {
+      setErrorBanner(err.message || 'Failed to execute bulk password reset.');
+      setTimeout(() => setErrorBanner(''), 5000);
+    }
+  };
+
   // User Locking & Unlocking Handlers (System Admin & Delegated Admin)
   const handleOpenLockUser = (id: string, name: string, identifier: string) => {
     if (!currentUser) return;
@@ -740,9 +847,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
       const matchCurr = (m.currentAddress || m.address || '').toLowerCase().includes(q);
       const isOwner = Boolean(currentUser?.memberId && m.id.toLowerCase() === currentUser.memberId.toLowerCase());
       const canAccessPrivate = Boolean(isOfficialOrAdmin || isOwner);
-      const matchSpouse = canAccessPrivate && (m.spouseName || '').toLowerCase().includes(q);
-      const matchSpouseMob = canAccessPrivate && (m.spouseMobile || '').toLowerCase().includes(q);
-      const matchEmerg = canAccessPrivate && (m.emergencyContact || '').toLowerCase().includes(q);
+
+      // A shareholder (user) can view and match other shareholders by Member Id, Name, Phone & Email only
+      if (!canAccessPrivate) {
+        return matchName || matchId || matchPhone || matchEmail;
+      }
+
+      const matchSpouse = (m.spouseName || '').toLowerCase().includes(q);
+      const matchSpouseMob = (m.spouseMobile || '').toLowerCase().includes(q);
+      const matchEmerg = (m.emergencyContact || '').toLowerCase().includes(q);
       const matchDirector = (m.controllingDirectorName || '').toLowerCase().includes(q);
       const matchStatus = (m.status || '').toLowerCase().includes(q);
       return (
@@ -1158,6 +1271,21 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               <button
                 type="button"
                 onClick={() => {
+                  setNameCorrectionProposed(myMemberRecord?.name || currentUser?.name || '');
+                  setNameCorrectionReason('Typo in registered spelling');
+                  setNameCorrectionDocRef('');
+                  setNameCorrectionError('');
+                  setShowNameCorrectionModal(true);
+                }}
+                className="w-full py-2 bg-gradient-to-r from-blue-950/60 via-indigo-950/60 to-slate-900 hover:from-blue-900/80 hover:to-indigo-900/80 text-blue-300 hover:text-blue-100 rounded-xl text-xs font-semibold border border-blue-700/60 hover:border-blue-500 transition flex items-center justify-center gap-1.5 shadow"
+              >
+                <SpellCheck className="w-3.5 h-3.5 text-blue-400" />
+                <span>Correct Spelling of My Name</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setSelfNewPass('');
                   setSelfConfirmPass('');
                   setSelfPassError('');
@@ -1214,57 +1342,137 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
             {/* Show pending update notice if user has requested changes */}
             {myMemberRecord?.pendingUpdate && (
-              <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-5 text-xs text-amber-200 space-y-3">
-                <div className="flex items-center gap-2 font-bold text-amber-300">
-                  <Clock className="w-4 h-4" />
-                  <span>Pending Profile Change Request Under Review</span>
+              myMemberRecord.pendingUpdate.isNameCorrectionOnly ? (
+                <div className="bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/60 border border-blue-600/50 rounded-2xl p-5 text-xs text-blue-200 space-y-3 shadow-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-blue-300">
+                      <SpellCheck className="w-4 h-4 text-blue-400" />
+                      <span>Name Spelling Correction Request Under Official Review</span>
+                    </div>
+                    <span className="text-[10px] font-mono bg-blue-900/60 text-blue-300 px-2.5 py-0.5 rounded border border-blue-700/60 font-semibold">
+                      Awaiting Official Approval
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-blue-300/80 leading-relaxed">
+                    You submitted an official request to correct the spelling of your name. Under Society Governance, a System Admin, Delegated Admin, or designated Official will verify and approve the correction before updating the central ledger.
+                  </p>
+                  <div className="p-3.5 bg-slate-950/80 rounded-xl border border-blue-900/40 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Current Registered Name</span>
+                      <span className="text-slate-300 line-through font-medium text-xs">
+                        {myMemberRecord.pendingUpdate.currentName || myMemberRecord.name}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Proposed Corrected Spelling</span>
+                      <span className="text-emerald-400 font-bold text-sm">
+                        {myMemberRecord.pendingUpdate.name}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Correction Reason</span>
+                      <span className="text-slate-200">
+                        {myMemberRecord.pendingUpdate.correctionReason || 'Typo correction'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Supporting Document / ID Ref</span>
+                      <span className="text-slate-200 font-mono">
+                        {myMemberRecord.pendingUpdate.supportingDocumentRef || 'None specified'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-slate-400">
+                      Submitted on: {new Date(myMemberRecord.pendingUpdate.requestedAt).toLocaleString()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const req = requests.find((r) => r.memberId === myMemberRecord.id && r.status === 'PENDING');
+                        if (req && currentUser) {
+                          storageService.cancelProfileUpdateRequest(req.id, currentUser);
+                          setRequests(storageService.getProfileUpdateRequests());
+                          setSuccessBanner('Name spelling correction request cancelled.');
+                          setTimeout(() => setSuccessBanner(''), 3000);
+                        }
+                      }}
+                      className="px-3 py-1 bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700 rounded-lg text-xs transition font-semibold"
+                    >
+                      Cancel Request
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                  You submitted changes to your profile. The System Admin or Delegated Admin can edit, modify, and approve these changes before committing them to the official society ledger.
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-amber-900/50 text-[11px]">
-                  <div>
-                    <span className="text-slate-400">Proposed Name:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.name}</div>
+              ) : (
+                <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-5 text-xs text-amber-200 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <Clock className="w-4 h-4" />
+                    <span>Pending Profile Change Request Under Review</span>
                   </div>
-                  <div>
-                    <span className="text-slate-400">Proposed Phone:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.phone}</div>
+                  <p className="text-[11px] text-amber-300/80 leading-relaxed">
+                    You submitted changes to your profile. The System Admin, Delegated Admin, or designated Official can edit, modify, and approve these changes before committing them to the official society ledger.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-amber-900/50 text-[11px]">
+                    <div>
+                      <span className="text-slate-400">Proposed Name:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.name}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed Phone:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.phone}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed Email:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.email}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed NID/Birth ID:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.nidOrBirthId || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed DoB:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.dob || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed Education:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.education || 'N/A'}</div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-400">Proposed Current Address:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.currentAddress || myMemberRecord.pendingUpdate.address}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed Permanent Address:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.permanentAddress || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Proposed Spouse:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.spouseName || 'N/A'} ({myMemberRecord.pendingUpdate.spouseMobile || 'N/A'})</div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-400">Proposed Emergency Contact:</span>
+                      <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.emergencyContact || 'N/A'}</div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-400">Proposed Email:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.email}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Proposed NID/Birth ID:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.nidOrBirthId || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Proposed DoB:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.dob || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Proposed Education:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.education || 'N/A'}</div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-400">Proposed Current Address:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.currentAddress || myMemberRecord.pendingUpdate.address}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Proposed Permanent Address:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.permanentAddress || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Proposed Spouse:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.spouseName || 'N/A'} ({myMemberRecord.pendingUpdate.spouseMobile || 'N/A'})</div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-400">Proposed Emergency Contact:</span>
-                    <div className="font-semibold text-white">{myMemberRecord.pendingUpdate.emergencyContact || 'N/A'}</div>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const req = requests.find((r) => r.memberId === myMemberRecord.id && r.status === 'PENDING');
+                        if (req && currentUser) {
+                          storageService.cancelProfileUpdateRequest(req.id, currentUser);
+                          setRequests(storageService.getProfileUpdateRequests());
+                          setSuccessBanner('Profile change request cancelled.');
+                          setTimeout(() => setSuccessBanner(''), 3000);
+                        }
+                      }}
+                      className="px-3 py-1 bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700 rounded-lg text-xs transition"
+                    >
+                      Cancel Request
+                    </button>
                   </div>
                 </div>
-              </div>
+              )
             )}
 
             {/* Profile Edit Form */}
@@ -1642,6 +1850,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                         <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
                           {req.memberId}
                         </span>
+                        {req.isNameCorrectionOnly ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700/80 flex items-center gap-1">
+                            <SpellCheck className="w-3 h-3 text-blue-400" />
+                            <span>Name Spelling Correction</span>
+                          </span>
+                        ) : null}
                         <span className="font-bold text-sm text-white">
                           Requested by: {req.requestedBy}
                         </span>
@@ -1663,7 +1877,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          <span>Quick Approve</span>
+                          <span>{req.isNameCorrectionOnly ? 'Approve Name Correction' : 'Quick Approve'}</span>
                         </button>
                         <button
                           onClick={() => handleReject(req.id)}
@@ -1675,48 +1889,97 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                       </div>
                     </div>
 
-                    {/* Comparison Table */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                          Current Registered Information
-                        </span>
-                        <div><span className="text-slate-400">Name:</span> <strong className="text-slate-200">{currentMemberData?.name}</strong></div>
-                        <div><span className="text-slate-400">Phone:</span> <span className="text-slate-200">{currentMemberData?.phone}</span></div>
-                        <div><span className="text-slate-400">Email:</span> <span className="text-slate-200">{currentMemberData?.email}</span></div>
-                        <div><span className="text-slate-400">Address:</span> <span className="text-slate-200">{currentMemberData?.address}</span></div>
-                      </div>
+                    {req.isNameCorrectionOnly ? (
+                      <div className="p-4 rounded-xl bg-blue-950/30 border border-blue-900/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
+                            <SpellCheck className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Official Name Spelling Verification Comparison</span>
+                          </span>
+                          <span className="text-[10px] text-blue-400 font-mono">
+                            Authority: System Admin, Delegated Admin, or Official
+                          </span>
+                        </div>
 
-                      <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 space-y-1.5">
-                        <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
-                          User Proposed Changes
-                        </span>
-                        <div>
-                          <span className="text-slate-400">Proposed Name:</span>{' '}
-                          <strong className={req.proposedName !== currentMemberData?.name ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
-                            {req.proposedName}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">Proposed Phone:</span>{' '}
-                          <span className={req.proposedPhone !== currentMemberData?.phone ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
-                            {req.proposedPhone}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">Proposed Email:</span>{' '}
-                          <span className={req.proposedEmail !== currentMemberData?.email ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
-                            {req.proposedEmail}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400">Proposed Address:</span>{' '}
-                          <span className={req.proposedAddress !== currentMemberData?.address ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
-                            {req.proposedAddress}
-                          </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                              Current Registered Spelling
+                            </span>
+                            <div className="text-slate-300 line-through text-sm font-semibold mt-0.5">
+                              {req.currentName || currentMemberData?.name}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
+                              Proposed Corrected Spelling
+                            </span>
+                            <div className="text-emerald-300 text-base font-bold mt-0.5">
+                              {req.proposedName}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                              Reason for Correction
+                            </span>
+                            <div className="text-slate-200 mt-0.5">
+                              {req.correctionReason || 'Typo correction'}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                              Supporting Document / Reference
+                            </span>
+                            <div className="text-slate-200 font-mono mt-0.5">
+                              {req.supportingDocumentRef || 'None specified'}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      /* Standard Comparison Table */
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                            Current Registered Information
+                          </span>
+                          <div><span className="text-slate-400">Name:</span> <strong className="text-slate-200">{currentMemberData?.name}</strong></div>
+                          <div><span className="text-slate-400">Phone:</span> <span className="text-slate-200">{currentMemberData?.phone}</span></div>
+                          <div><span className="text-slate-400">Email:</span> <span className="text-slate-200">{currentMemberData?.email}</span></div>
+                          <div><span className="text-slate-400">Address:</span> <span className="text-slate-200">{currentMemberData?.address}</span></div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 space-y-1.5">
+                          <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                            User Proposed Changes
+                          </span>
+                          <div>
+                            <span className="text-slate-400">Proposed Name:</span>{' '}
+                            <strong className={req.proposedName !== currentMemberData?.name ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
+                              {req.proposedName}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Proposed Phone:</span>{' '}
+                            <span className={req.proposedPhone !== currentMemberData?.phone ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
+                              {req.proposedPhone}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Proposed Email:</span>{' '}
+                            <span className={req.proposedEmail !== currentMemberData?.email ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
+                              {req.proposedEmail}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Proposed Address:</span>{' '}
+                            <span className={req.proposedAddress !== currentMemberData?.address ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
+                              {req.proposedAddress}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1770,35 +2033,247 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
               <button
                 onClick={handleExportDirectoryCSV}
-                title="Download complete Member Directory in CSV format (16 columns)"
+                title="Download complete Member Directory in CSV format"
                 className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-emerald-800/60 hover:border-emerald-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">Export CSV</span>
               </button>
+
+              {isOfficialOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowMemberImportModal(true)}
+                  title="Bulk upload & update Member basic data (Full Name, Primary Phone, Official Email, Current Address, Permanent Address, Spouse Name, Spouse Mobile) via CSV"
+                  className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 text-indigo-400 hover:text-indigo-300 border border-indigo-800/60 hover:border-indigo-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow"
+                >
+                  <Upload className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="hidden sm:inline">Import Members CSV</span>
+                </button>
+              )}
+
+              {currentUser?.role === 'SYSTEM_ADMIN' && (
+                <button
+                  type="button"
+                  onClick={handleResetAllUsers}
+                  title="System Admin Authority: Reset passwords for all 144 shareholders & officials to system default"
+                  className="px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900/90 text-rose-300 hover:text-rose-200 border border-rose-800/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Reset All Passwords</span>
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Directory Table with exactly 16 requested columns */}
+          {/* Shareholder Privacy Banner */}
+          {!isOfficialOrAdmin && (
+            <div className="bg-slate-900/90 border border-emerald-900/40 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-950/80 border border-emerald-800/80 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <span>Shareholder Privacy Policy Active</span>
+                    <span className="text-[10px] text-emerald-400 font-normal bg-emerald-950/60 px-2 py-0.2 rounded border border-emerald-800/60">
+                      Standard Governance
+                    </span>
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Fellow shareholders can view other shareholders' <strong className="text-emerald-400 font-semibold">Member ID, Full Name, Phone & Email Only</strong>. All other demographic and financial attributes remain confidential.
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-slate-950 border border-slate-800 text-[10px] font-mono text-emerald-400 font-semibold uppercase tracking-wider shrink-0">
+                🔒 Privacy Protected
+              </span>
+            </div>
+          )}
+
+          {/* Directory Table: Shareholder 4-attribute view vs Official 16-attribute view */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[2150px]">
+            {!isOfficialOrAdmin ? (
+              /* Shareholder View: Member Id, Name, Phone & Email Only */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-full">
+                  <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px] tracking-wider">
+                    <tr>
+                      <th className="py-3.5 px-4 whitespace-nowrap text-emerald-400 font-bold">
+                        Member Id
+                      </th>
+                      <th className="py-3.5 px-4 whitespace-nowrap text-white font-bold">
+                        Full Name
+                      </th>
+                      <th className="py-3.5 px-4 whitespace-nowrap text-white font-bold">
+                        Phone
+                      </th>
+                      <th className="py-3.5 px-4 whitespace-nowrap text-white font-bold">
+                        Email
+                      </th>
+                      <th className="py-3.5 px-4 whitespace-nowrap text-right">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {filteredMembers.map((m) => {
+                      const isRowOwner = Boolean(
+                        currentUser?.memberId && m.id.toLowerCase() === currentUser.memberId.toLowerCase()
+                      );
+
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-800/50 transition group">
+                          {/* 1. Member Id */}
+                          <td className="py-3.5 px-4 font-mono font-bold whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded bg-emerald-950/70 border border-emerald-800/80 text-emerald-400">
+                              {m.id}
+                            </span>
+                          </td>
+
+                          {/* 2. Full Name */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-white text-sm">{m.name}</span>
+                              {isRowOwner && (
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 3. Phone */}
+                          <td className="py-3.5 px-4 font-mono text-slate-300 whitespace-nowrap">
+                            <a href={`tel:${m.phone}`} className="hover:text-emerald-400 transition-colors flex items-center gap-1.5 text-xs">
+                              <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>{m.phone}</span>
+                            </a>
+                          </td>
+
+                          {/* 4. Email */}
+                          <td className="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                            <a href={`mailto:${m.email}`} className="hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-xs">
+                              <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>{m.email}</span>
+                            </a>
+                          </td>
+
+                          {/* Action */}
+                          <td className="py-3.5 px-4 whitespace-nowrap text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDossierMember(m)}
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold shadow transition inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>View Contact</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* Administrative View with all 16 columns for Officials & Admins */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[2150px]">
                 <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px] tracking-wider">
                   <tr>
                     <th className="py-3 px-3.5 whitespace-nowrap sticky left-0 z-20 bg-slate-950 border-r border-slate-800/80 shadow-md">
                       Member Id
                     </th>
-                    <th className="py-3 px-3 whitespace-nowrap">Share#</th>
-                    <th className="py-3 px-3 whitespace-nowrap">2×2 Photo</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Full Name</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Controlling Director</th>
-                    <th className="py-3 px-3.5 whitespace-nowrap">Phone</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Email</th>
-                    <th className="py-3 px-3.5 whitespace-nowrap">NID/Birth ID</th>
-                    <th className="py-3 px-3 whitespace-nowrap">DoB</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Education</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Permanent Address</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Current Address</th>
+                    <th className="py-3 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Share#</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>2×2 Photo</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap text-white font-bold">
+                      Full Name
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Controlling Director</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-3.5 whitespace-nowrap text-white font-bold">
+                      Phone
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap text-white font-bold">
+                      Email
+                    </th>
+                    <th className="py-3 px-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>NID/Birth ID</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>DoB</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Education</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Permanent Address</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span>Current Address</span>
+                        {!isOfficialOrAdmin && (
+                          <span title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-2.5 h-2.5 text-slate-500" />
+                          </span>
+                        )}
+                      </div>
+                    </th>
                     <th className="py-3 px-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">
                         <span>Spouse Name</span>
@@ -1831,7 +2306,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     </th>
                     <th className="py-3 px-3 whitespace-nowrap text-center">Status</th>
                     <th className="py-3 px-4 whitespace-nowrap text-right sticky right-0 z-20 bg-slate-950 border-l border-slate-800/80 shadow-md">
-                      Admin Action
+                      Action
                     </th>
                   </tr>
                 </thead>
@@ -1853,62 +2328,78 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
                       {/* 2. Share# */}
                       <td className="py-3 px-3 font-mono font-bold text-slate-200 whitespace-nowrap">
-                        #{m.shareNumber}
+                        {canAccessRowPrivate ? (
+                          `#${m.shareNumber}`
+                        ) : (
+                          <span className="text-slate-600 font-mono text-[11px] select-none" title="Confidential: Visible to shareholder & officials only">
+                            ••••
+                          </span>
+                        )}
                       </td>
 
                       {/* 2×2 Passport Photo */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <div
-                            onClick={() => setSelectedDossierMember(m)}
-                            className="w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-white shadow-sm flex items-center justify-center cursor-pointer hover:border-emerald-500 transition relative group/avatar shrink-0"
-                            title={`2×2 Passport Photo: ${m.name} (${m.photoStatus || 'No photo uploaded'})`}
-                          >
-                            {m.photoUrl ? (
-                              <img src={m.photoUrl} alt={m.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-[10px] font-bold">
-                                {m.name.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            {m.photoStatus === 'AUTHORIZED' && (
-                              <span
-                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-1 ring-slate-950 flex items-center justify-center text-[7px] text-slate-950 font-bold"
-                                title="2×2 Photo Authorized"
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              onClick={() => setSelectedDossierMember(m)}
+                              className="w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-white shadow-sm flex items-center justify-center cursor-pointer hover:border-emerald-500 transition relative group/avatar shrink-0"
+                              title={`2×2 Passport Photo: ${m.name} (${m.photoStatus || 'No photo uploaded'})`}
+                            >
+                              {m.photoUrl ? (
+                                <img src={m.photoUrl} alt={m.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-[10px] font-bold">
+                                  {m.name.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              {m.photoStatus === 'AUTHORIZED' && (
+                                <span
+                                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-1 ring-slate-950 flex items-center justify-center text-[7px] text-slate-950 font-bold"
+                                  title="2×2 Photo Authorized"
+                                >
+                                  ✓
+                                </span>
+                              )}
+                              {m.photoStatus === 'PENDING_AUTHORIZATION' && (
+                                <span
+                                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 ring-1 ring-slate-950 animate-pulse"
+                                  title="Pending Authorization"
+                                />
+                              )}
+                            </div>
+                            {isOfficialOrAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPassportUploadForMember(m)}
+                                title={`Change / Add / Edit 2×2 Photo for Shareholder ${m.name} (Official Authority)`}
+                                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition"
                               >
-                                ✓
-                              </span>
-                            )}
-                            {m.photoStatus === 'PENDING_AUTHORIZATION' && (
-                              <span
-                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 ring-1 ring-slate-950 animate-pulse"
-                                title="Pending Authorization"
-                              />
+                                <Camera className="w-3.5 h-3.5" />
+                              </button>
                             )}
                           </div>
-                          {isOfficialOrAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPassportUploadForMember(m)}
-                              title={`Change / Add / Edit 2×2 Photo for Shareholder ${m.name} (Official Authority)`}
-                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition"
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+                        ) : (
+                          <div
+                            onClick={() => setSelectedDossierMember(m)}
+                            className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 select-none cursor-pointer hover:border-slate-700 transition"
+                            title="2×2 Photo confidential to shareholder and society officials"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-600" />
+                          </div>
+                        )}
                       </td>
 
                       {/* 3. Full Name */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-white">{m.name}</span>
-                          {m.ecDesignation && m.ecDesignation !== 'None' && (
+                          {canAccessRowPrivate && m.ecDesignation && m.ecDesignation !== 'None' && (
                             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                               {m.ecDesignation}
                             </span>
                           )}
-                          {m.pendingUpdate && (
+                          {canAccessRowPrivate && m.pendingUpdate && (
                             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Pending update request under review" />
                           )}
                         </div>
@@ -1916,10 +2407,17 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
                       {/* 4. Controlling Director */}
                       <td className="py-3 px-4 text-emerald-400 font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <Building className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />
-                          <span>{m.controllingDirectorName}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5">
+                            <Building className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />
+                            <span>{m.controllingDirectorName}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-slate-600 select-none text-[11px]" title="Confidential: Visible to shareholder & officials only">
+                            <Lock className="w-3 h-3 text-slate-600 shrink-0" />
+                            <span className="italic text-[10px]">Confidential</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 5. Phone */}
@@ -1940,41 +2438,63 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
                       {/* 7. NID/Birth ID */}
                       <td className="py-3 px-3.5 font-mono text-slate-300 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-mono tracking-wide">
-                          {m.nidOrBirthId || 'N/A'}
-                        </span>
+                        {canAccessRowPrivate ? (
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-mono tracking-wide">
+                            {m.nidOrBirthId || 'N/A'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600 font-mono text-[11px] select-none" title="Confidential">
+                            ••••••••••••
+                          </span>
+                        )}
                       </td>
 
                       {/* 8. DoB */}
                       <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap text-[11px]">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
-                          <span>{m.dob || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
+                            <span>{m.dob || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] italic select-none">Protected</span>
+                        )}
                       </td>
 
                       {/* 9. Education */}
                       <td className="py-3 px-4 text-slate-300 whitespace-nowrap text-[11px]">
-                        <div className="flex items-center gap-1.5 max-w-[240px] truncate" title={m.education}>
-                          <GraduationCap className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          <span className="truncate">{m.education || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5 max-w-[240px] truncate" title={m.education}>
+                            <GraduationCap className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span className="truncate">{m.education || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] italic select-none">Protected</span>
+                        )}
                       </td>
 
                       {/* 10. Permanent Address */}
                       <td className="py-3 px-4 text-slate-300 text-[11px]">
-                        <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.permanentAddress}>
-                          <MapPin className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
-                          <span className="truncate">{m.permanentAddress || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.permanentAddress}>
+                            <MapPin className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+                            <span className="truncate">{m.permanentAddress || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] italic select-none">Protected</span>
+                        )}
                       </td>
 
                       {/* 11. Current Address */}
                       <td className="py-3 px-4 text-slate-300 text-[11px]">
-                        <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.currentAddress || m.address}>
-                          <MapPin className="w-3.5 h-3.5 text-emerald-400/80 shrink-0" />
-                          <span className="truncate">{m.currentAddress || m.address || 'N/A'}</span>
-                        </div>
+                        {canAccessRowPrivate ? (
+                          <div className="flex items-center gap-1.5 max-w-[260px] truncate" title={m.currentAddress || m.address}>
+                            <MapPin className="w-3.5 h-3.5 text-emerald-400/80 shrink-0" />
+                            <span className="truncate">{m.currentAddress || m.address || 'N/A'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] italic select-none">Protected</span>
+                        )}
                       </td>
 
                       {/* 12. Spouse Name */}
@@ -2025,15 +2545,21 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
 
                       {/* 15. Status */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          (lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id])
-                            ? 'bg-rose-950/80 text-rose-300 border border-rose-700 font-bold'
-                            : m.status === 'ACTIVE'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                        }`}>
-                          {(lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id]) ? 'LOCKED' : m.status}
-                        </span>
+                        {canAccessRowPrivate ? (
+                          <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            (lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id])
+                              ? 'bg-rose-950/80 text-rose-300 border border-rose-700 font-bold'
+                              : m.status === 'ACTIVE'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                          }`}>
+                            {(lockedUsersMap[m.id.toLowerCase()] || lockedUsersMap[m.id]) ? 'LOCKED' : m.status}
+                          </span>
+                        ) : (
+                          <span className="inline-block text-[10px] font-medium text-slate-500 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800 select-none">
+                            Active
+                          </span>
+                        )}
                       </td>
 
                       {/* 16. Admin Action (Sticky Right) */}
@@ -2107,6 +2633,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -2143,6 +2670,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                     {periodicStatus.isOverdue && (
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                     )}
+                  </button>
+                  <button
+                    onClick={handleResetAllUsers}
+                    className="px-3.5 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-700/80 rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 transition"
+                    title="Reset passwords for all 144 shareholders & officials to system default"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Reset All Users Passwords</span>
                   </button>
                   <button
                     onClick={() => setShowAddOfficialModal(true)}
@@ -2729,71 +3264,143 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
         </div>
       )}
 
-      {/* Member Profile Dossier Modal (All 16 Attributes) */}
-      {selectedDossierMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-              <div className="flex items-center gap-3">
-                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-600 bg-white shadow-md relative shrink-0">
-                  {selectedDossierMember.photoUrl ? (
-                    <img
-                      src={selectedDossierMember.photoUrl}
-                      alt={selectedDossierMember.name}
-                      className="w-full h-full object-cover"
-                    />
+      {/* Member Profile Dossier Modal (All 16 Attributes for Owner/Officials, 4 Attributes for Fellow Shareholders) */}
+      {selectedDossierMember && (() => {
+        const isDossierOwner = Boolean(
+          currentUser?.memberId &&
+          selectedDossierMember.id.toLowerCase() === currentUser.memberId.toLowerCase()
+        );
+        const canAccessDossierPrivate = Boolean(isOfficialOrAdmin || isDossierOwner);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+                <div className="flex items-center gap-3">
+                  {canAccessDossierPrivate ? (
+                    <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-600 bg-white shadow-md relative shrink-0">
+                      {selectedDossierMember.photoUrl ? (
+                        <img
+                          src={selectedDossierMember.photoUrl}
+                          alt={selectedDossierMember.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-500">
+                          <Camera className="w-6 h-6 mb-0.5 text-slate-600" />
+                          <span className="text-[8px] font-mono">2"×2"</span>
+                        </div>
+                      )}
+                      <div className="absolute top-0.5 left-0.5 bg-slate-950/80 px-1 py-0.2 rounded text-[7px] font-mono text-emerald-300">
+                        2"×2"
+                      </div>
+                    </div>
                   ) : (
-                    <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-500">
-                      <Camera className="w-6 h-6 mb-0.5 text-slate-600" />
-                      <span className="text-[8px] font-mono">2"×2"</span>
+                    <div className="w-14 h-14 rounded-xl bg-slate-950 border border-slate-800 flex flex-col items-center justify-center text-slate-500 shadow-md shrink-0">
+                      <Lock className="w-5 h-5 text-slate-600 mb-0.5" />
+                      <span className="text-[8px] font-mono text-slate-600 uppercase font-semibold">Protected</span>
                     </div>
                   )}
-                  <div className="absolute top-0.5 left-0.5 bg-slate-950/80 px-1 py-0.2 rounded text-[7px] font-mono text-emerald-300">
-                    2"×2"
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">{selectedDossierMember.name}</h3>
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      {selectedDossierMember.id}
-                    </span>
-                    <span className="font-mono text-xs text-slate-300 font-semibold">
-                      Share #{selectedDossierMember.shareNumber}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                    <span>Prottasha Housing Society – Official Member Dossier</span>
-                    {selectedDossierMember.photoStatus === 'AUTHORIZED' && (
-                      <span className="text-emerald-400 font-semibold text-[10px]">
-                        ✓ 2×2 Photo Authorized
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedDossierMember(null)}
-                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Dossier Body with 16 Attributes */}
-            <div className="p-6 space-y-5 text-xs max-h-[75vh] overflow-y-auto">
-              {/* Category 1: Identification & Core Share */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Shareholder Identification & Registry</span>
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Member Id</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">{selectedDossierMember.id}</span>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-white">{selectedDossierMember.name}</h3>
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                        {selectedDossierMember.id}
+                      </span>
+                      {canAccessDossierPrivate ? (
+                        <span className="font-mono text-xs text-slate-300 font-semibold">
+                          Share #{selectedDossierMember.shareNumber}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                      <span>Prottasha Housing Society – Member Directory Profile</span>
+                      {canAccessDossierPrivate && selectedDossierMember.photoStatus === 'AUTHORIZED' && (
+                        <span className="text-emerald-400 font-semibold text-[10px]">
+                          ✓ 2×2 Photo Authorized
+                        </span>
+                      )}
+                    </p>
                   </div>
+                </div>
+                <button
+                  onClick={() => setSelectedDossierMember(null)}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Dossier Body */}
+              {!canAccessDossierPrivate ? (
+                <div className="p-6 space-y-4 text-xs">
+                  <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
+                    <div className="flex items-center gap-2 pb-2.5 border-b border-slate-800 text-white font-bold text-sm">
+                      <Shield className="w-4 h-4 text-emerald-400" />
+                      <span>Shareholder Public Contact Directory</span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      In accordance with Society Governance & Shareholder Privacy Regulations, fellow members are granted access to <strong className="text-emerald-400 font-semibold">Member ID, Full Name, Primary Phone & Official Email only</strong>.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Member ID</span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">{selectedDossierMember.id}</span>
+                      </div>
+
+                      <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Full Name</span>
+                        <span className="font-bold text-white text-sm mt-0.5 block">{selectedDossierMember.name}</span>
+                      </div>
+
+                      <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Primary Phone</span>
+                        <a href={`tel:${selectedDossierMember.phone}`} className="font-mono text-emerald-400 hover:underline font-bold text-sm flex items-center gap-1.5 mt-0.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{selectedDossierMember.phone}</span>
+                        </a>
+                      </div>
+
+                      <div className="p-3 bg-slate-900 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Official Email</span>
+                        <a href={`mailto:${selectedDossierMember.email}`} className="font-mono text-emerald-400 hover:underline font-bold text-sm flex items-center gap-1.5 mt-0.5">
+                          <Mail className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{selectedDossierMember.email}</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+                      <Lock className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-300">
+                        Confidential Shareholder Attributes Protected
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Shareholder share units, plot/residential addresses, national identity numbers, education, spouse information, and emergency contacts are confidential and visible only to the shareholder and authorized Society Officials.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 space-y-5 text-xs max-h-[75vh] overflow-y-auto">
+                  {/* Category 1: Identification & Core Share */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Shareholder Identification & Registry</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Member Id</span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm">{selectedDossierMember.id}</span>
+                      </div>
                   <div>
                     <span className="text-slate-400 block text-[11px]">Share#</span>
                     <span className="font-mono font-bold text-white text-sm">#{selectedDossierMember.shareNumber} of 144</span>
@@ -2883,73 +3490,64 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
               </div>
 
               {/* Category 5: Family & Emergency Contact */}
-              {(() => {
-                const isDossierOwner = Boolean(
-                  currentUser?.memberId &&
-                  selectedDossierMember.id.toLowerCase() === currentUser.memberId.toLowerCase()
-                );
-                const canAccessDossierPrivate = Boolean(isOfficialOrAdmin || isDossierOwner);
-
-                return (
-                  <div className="space-y-2">
-                    <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Heart className="w-3.5 h-3.5" />
-                        <span>Spouse & Emergency Contact</span>
-                      </span>
-                      {!canAccessDossierPrivate && (
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-1">
-                          <Lock className="w-2.5 h-2.5 text-slate-500" />
-                          <span>Confidential to Shareholder</span>
-                        </span>
-                      )}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Heart className="w-3.5 h-3.5" />
+                    <span>Spouse & Emergency Contact</span>
+                  </span>
+                  {!canAccessDossierPrivate && (
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      <span>Confidential to Shareholder</span>
                     </span>
+                  )}
+                </span>
 
-                    {canAccessDossierPrivate ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
-                        <div>
-                          <span className="text-slate-400 block text-[11px]">Spouse Name</span>
-                          <span className="text-slate-200 font-medium block mt-0.5">{selectedDossierMember.spouseName || 'N/A'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[11px]">Spouse Mobile</span>
-                          {selectedDossierMember.spouseMobile ? (
-                            <a href={`tel:${selectedDossierMember.spouseMobile}`} className="font-mono text-slate-200 hover:text-emerald-400 block mt-0.5">
-                              {selectedDossierMember.spouseMobile}
-                            </a>
-                          ) : (
-                            <span className="text-slate-500 block mt-0.5">N/A</span>
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
-                          <span className="font-mono text-amber-300 font-medium block mt-0.5">{selectedDossierMember.emergencyContact || 'N/A'}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                            <Lock className="w-4 h-4 text-slate-400" />
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-300 text-xs">
-                              Private Contact Details Protected
-                            </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              Spouse information and emergency contacts of fellow shareholders are confidential and visible only to the owner and authorized Society Officials.
-                            </div>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-500 font-semibold uppercase tracking-wider shrink-0 ml-3">
-                          Protected
-                        </span>
-                      </div>
-                    )}
+                {canAccessDossierPrivate ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Spouse Name</span>
+                      <span className="text-slate-200 font-medium block mt-0.5">{selectedDossierMember.spouseName || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Spouse Mobile</span>
+                      {selectedDossierMember.spouseMobile ? (
+                        <a href={`tel:${selectedDossierMember.spouseMobile}`} className="font-mono text-slate-200 hover:text-emerald-400 block mt-0.5">
+                          {selectedDossierMember.spouseMobile}
+                        </a>
+                      ) : (
+                        <span className="text-slate-500 block mt-0.5">N/A</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
+                      <span className="font-mono text-amber-300 font-medium block mt-0.5">{selectedDossierMember.emergencyContact || 'N/A'}</span>
+                    </div>
                   </div>
-                );
-              })()}
+                ) : (
+                  <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                        <Lock className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-300 text-xs">
+                          Private Contact Details Protected
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Spouse information and emergency contacts of fellow shareholders are confidential and visible only to the owner and authorized Society Officials.
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-500 font-semibold uppercase tracking-wider shrink-0 ml-3">
+                      Protected
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
+          )}
 
             {/* Modal Actions */}
             <div className="px-6 py-3.5 border-t border-slate-800 flex items-center justify-between bg-slate-950">
@@ -3034,7 +3632,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Create Official Modal */}
       {showAddOfficialModal && (
@@ -3633,6 +4232,144 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
             </form>
           </div>
         </div>
+      )}
+
+      {/* Shareholder Name Spelling Correction Request Modal */}
+      {showNameCorrectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="max-w-lg w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
+                  <SpellCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Request Name Spelling Correction</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    Member ID: {myMemberId || myMemberRecord?.id || 'Shareholder Account'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNameCorrectionModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitNameCorrection} className="p-6 space-y-4 text-xs">
+              {/* Official Policy Banner */}
+              <div className="p-3.5 rounded-xl bg-blue-950/40 border border-blue-800/60 text-blue-200 space-y-1.5">
+                <div className="font-semibold text-blue-300 flex items-center gap-1.5">
+                  <Shield className="w-4 h-4 text-blue-400" />
+                  <span>Official Approval Workflow Policy</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Society corporate records require strict verification. All name spelling corrections submitted by shareholders must be officially verified and approved by a <strong className="text-blue-300 font-medium">System Admin, Delegated Admin, or designated Official</strong> before being committed to central ledgers.
+                </p>
+              </div>
+
+              {nameCorrectionError && (
+                <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{nameCorrectionError}</span>
+                </div>
+              )}
+
+              {/* Current Name (Read Only) */}
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Current Registered Legal Name</label>
+                <div className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 font-medium font-sans">
+                  {myMemberRecord?.name || currentUser?.name || 'Unknown'}
+                </div>
+              </div>
+
+              {/* Proposed Corrected Name */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Proposed Corrected Legal Name <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nameCorrectionProposed}
+                  onChange={(e) => setNameCorrectionProposed(e.target.value)}
+                  placeholder="e.g. MOHAMMED TARIQUL ISLAM"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-medium focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Enter the exact legal spelling as printed on your official NID card or Passport.
+                </span>
+              </div>
+
+              {/* Correction Reason */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Reason for Spelling Correction</label>
+                <select
+                  value={nameCorrectionReason}
+                  onChange={(e) => setNameCorrectionReason(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="Typo in registered spelling">Typo / Minor spelling typo in registered record</option>
+                  <option value="Correction to match National ID (NID)">Correction to exactly match National ID (NID)</option>
+                  <option value="Correction to match International Passport">Correction to match International Passport</option>
+                  <option value="Correction to match Academic Certificate">Correction to match Academic / University Certificate</option>
+                  <option value="Official name change / Legal affidavit">Official legal name amendment / Legal affidavit</option>
+                  <option value="Prefix or honorific adjustment">Prefix, middle name, or honorific adjustment</option>
+                  <option value="Other">Other administrative reason</option>
+                </select>
+              </div>
+
+              {/* Supporting Document / Reference */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Supporting Document Reference <span className="text-slate-500 font-normal">(Optional but recommended)</span>
+                </label>
+                <input
+                  type="text"
+                  value={nameCorrectionDocRef}
+                  onChange={(e) => setNameCorrectionDocRef(e.target.value)}
+                  placeholder="e.g. NID No: 19852692500000001 or Passport No: A02345678"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowNameCorrectionModal(false)}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingNameCorrection}
+                  className="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-lg font-semibold shadow flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <SpellCheck className="w-3.5 h-3.5" />
+                  <span>{isSubmittingNameCorrection ? 'Submitting Request...' : 'Submit Correction Request'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Member Basic Data CSV Import Modal */}
+      {showMemberImportModal && (
+        <MemberDataCSVImportModal
+          currentUser={currentUser}
+          isOpen={showMemberImportModal}
+          onClose={() => setShowMemberImportModal(false)}
+          onSuccess={(count) => {
+            setSuccessBanner(`Successfully bulk updated basic contact & demographic data for ${count} shareholders via CSV.`);
+            setTimeout(() => setSuccessBanner(''), 5000);
+          }}
+          membersList={members}
+        />
       )}
     </div>
   );

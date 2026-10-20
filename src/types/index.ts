@@ -3,7 +3,7 @@
  * Core Domain Models and Type Definitions
  */
 
-export type UserRole = 'SYSTEM_ADMIN' | 'DELEGATED_ADMIN' | 'MANAGER' | 'MEMBER';
+export type UserRole = 'SYSTEM_ADMIN' | 'DELEGATED_ADMIN' | 'MANAGER' | 'OFFICIAL' | 'MEMBER';
 
 export interface DirectorInfo {
   key: string;
@@ -651,5 +651,27 @@ export interface RecordShareTransferInput {
   transferReason: string;
   remarks?: string;
 }
+
+export type NotificationType =
+  | 'DEPOSIT_RECORDED'
+  | 'DEPOSIT_APPROVED'
+  | 'DEPOSIT_REJECTED'
+  | 'STATEMENT_UPDATED'
+  | 'PROFILE_UPDATED'
+  | 'SYSTEM_ALERT';
+
+export interface MemberNotification {
+  id: string;
+  memberId: string; // Target Member ID (e.g. 'PHSM-001') or 'ALL'
+  title: string;
+  message: string;
+  type: NotificationType;
+  amountBDT?: number;
+  referenceId?: string; // Deposit ID or Transaction reference
+  createdAt: string;
+  isRead: boolean;
+  linkTab?: string; // Tab to navigate to (e.g. 'member_statement', 'incomes')
+}
+
 
 

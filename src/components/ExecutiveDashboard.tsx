@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -17,6 +17,9 @@ import {
   FileSpreadsheet,
   FileText,
   Sparkles,
+  Scale,
+  Calendar,
+  Filter,
 } from 'lucide-react';
 import { IncomeEntry, ExpenseEntry, User, Member } from '../types';
 import {
@@ -27,11 +30,13 @@ import {
 import { TOTAL_SHARES } from '../utils/directors';
 import { storageService } from '../services/storageService';
 import { FinancialTrendChart } from './FinancialTrendChart';
+import { MonthlyGrowthTrendsSection } from './MonthlyGrowthTrendsSection';
 import { ExpenseForecastChart } from './ExpenseForecastChart';
 import { CashFlowGapD3Chart } from './CashFlowGapD3Chart';
 import { TierComparisonMatrix } from './TierComparisonMatrix';
 import { AnnualBudgetVarianceSubModule } from './AnnualBudgetVarianceSubModule';
 import { BoardPresentationPDFModal } from './BoardPresentationPDFModal';
+import { MultiYearComparisonSection } from './MultiYearComparisonSection';
 
 interface ExecutiveDashboardProps {
   incomes: IncomeEntry[];
@@ -48,10 +53,44 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   onNavigateTab,
   members: propMembers,
 }) => {
-  const [dashboardSubTab, setDashboardSubTab] = useState<'OVERVIEW' | 'BUDGET_VARIANCE' | 'EXPENSE_FORECAST'>('OVERVIEW');
+  const [dashboardSubTab, setDashboardSubTab] = useState<'OVERVIEW' | 'TRENDS' | 'MULTI_YEAR' | 'BUDGET_VARIANCE' | 'EXPENSE_FORECAST'>('OVERVIEW');
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('2026');
   const [showBoardPDFModal, setShowBoardPDFModal] = useState<boolean>(false);
-  const financials = computeProjectFinancials(incomes, expenses);
-  const directorSummaries = computeDirectorSummaries(incomes, expenses);
+
+  // Discover all distinct fiscal years across income and expense datasets
+  const availableYears = useMemo(() => {
+    const set = new Set<string>();
+    incomes.forEach((i) => {
+      if (i.date && i.date.length >= 4) {
+        set.add(i.date.substring(0, 4));
+      }
+    });
+    expenses.forEach((e) => {
+      if (e.date && e.date.length >= 4) {
+        set.add(e.date.substring(0, 4));
+      }
+    });
+    // Ensure default foundation years
+    set.add('2026');
+    set.add('2025');
+    set.add('2024');
+    return Array.from(set).sort().reverse();
+  }, [incomes, expenses]);
+
+  // Filtered income & expense datasets based on selected Fiscal Year toggle
+  const filteredIncomes = useMemo(() => {
+    if (selectedFiscalYear === 'ALL') return incomes;
+    return incomes.filter((i) => i.date && i.date.startsWith(selectedFiscalYear));
+  }, [incomes, selectedFiscalYear]);
+
+  const filteredExpenses = useMemo(() => {
+    if (selectedFiscalYear === 'ALL') return expenses;
+    return expenses.filter((e) => e.date && e.date.startsWith(selectedFiscalYear));
+  }, [expenses, selectedFiscalYear]);
+
+  // Compute live project financials & director summaries for the filtered fiscal year cycle
+  const financials = computeProjectFinancials(filteredIncomes, filteredExpenses);
+  const directorSummaries = computeDirectorSummaries(filteredIncomes, filteredExpenses);
   const members = propMembers || storageService.getMembers();
 
   const canApprove =
@@ -81,6 +120,17 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           {/* Central Society Status Indicators */}
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setDashboardSubTab('TRENDS')}
+              className="bg-slate-800/80 hover:bg-slate-700/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right transition cursor-pointer"
+              title="Open Recharts Monthly Income vs Expense Growth Trends Section"
+            >
+              <div className="text-[11px] text-slate-400">Monthly Growth</div>
+              <div className="text-sm font-bold text-teal-400 flex items-center gap-1.5 justify-end">
+                <TrendingUp className="w-4 h-4 text-teal-400" />
+                <span>Trends Section</span>
+              </div>
+            </button>
+            <button
               onClick={() => setDashboardSubTab('BUDGET_VARIANCE')}
               className="bg-slate-800/80 hover:bg-slate-700/80 px-3.5 py-2 rounded-xl border border-slate-700/80 text-right transition cursor-pointer"
               title="Switch to Board Annual Budget & Variance Analysis sub-module"
@@ -108,22 +158,46 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
       {/* Sub-module Navigation Tabs */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setDashboardSubTab('OVERVIEW')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
               dashboardSubTab === 'OVERVIEW'
                 ? 'bg-emerald-600 text-white shadow-md'
                 : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>Executive Overview & Balance Matrix</span>
+            <span>Executive Overview</span>
+          </button>
+
+          <button
+            onClick={() => setDashboardSubTab('TRENDS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
+              dashboardSubTab === 'TRENDS'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 text-teal-300" />
+            <span>Growth Trends (Recharts)</span>
+          </button>
+
+          <button
+            onClick={() => setDashboardSubTab('MULTI_YEAR')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
+              dashboardSubTab === 'MULTI_YEAR'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <Scale className="w-4 h-4 text-indigo-300" />
+            <span>Multi-Year Comparison</span>
           </button>
 
           <button
             onClick={() => setDashboardSubTab('BUDGET_VARIANCE')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
               dashboardSubTab === 'BUDGET_VARIANCE'
                 ? 'bg-emerald-600 text-white shadow-md'
                 : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
@@ -135,21 +209,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
           <button
             onClick={() => setDashboardSubTab('EXPENSE_FORECAST')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
               dashboardSubTab === 'EXPENSE_FORECAST'
                 ? 'bg-amber-600 text-white shadow-md'
                 : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Predictive Expense Forecast (Recharts)</span>
+            <span>Predictive Expense Forecast</span>
           </button>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowBoardPDFModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition shrink-0"
             title="Generate and view complete summary PDF report for board presentation"
           >
             <FileText className="w-3.5 h-3.5" />
@@ -165,14 +239,103 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       </div>
 
       {/* Conditional Sub-module Rendering */}
-      {dashboardSubTab === 'BUDGET_VARIANCE' ? (
-        <AnnualBudgetVarianceSubModule expenses={expenses} currentUser={currentUser} />
+      {dashboardSubTab === 'MULTI_YEAR' ? (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <MultiYearComparisonSection
+            incomes={incomes}
+            expenses={expenses}
+            selectedFiscalYear={selectedFiscalYear}
+            onSelectFiscalYear={setSelectedFiscalYear}
+          />
+        </div>
+      ) : dashboardSubTab === 'TRENDS' ? (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <MonthlyGrowthTrendsSection incomes={filteredIncomes} expenses={filteredExpenses} />
+        </div>
+      ) : dashboardSubTab === 'BUDGET_VARIANCE' ? (
+        <AnnualBudgetVarianceSubModule expenses={filteredExpenses} currentUser={currentUser} />
       ) : dashboardSubTab === 'EXPENSE_FORECAST' ? (
         <div className="space-y-6 animate-in fade-in duration-150">
-          <ExpenseForecastChart expenses={expenses} incomes={incomes} />
+          <ExpenseForecastChart expenses={filteredExpenses} incomes={filteredIncomes} />
         </div>
       ) : (
         <>
+          {/* Fiscal Year Toggle & Multi-Year Selector Bar */}
+          <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mr-1">
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                <span>Fiscal Year Cycle:</span>
+              </div>
+
+              <button
+                onClick={() => setSelectedFiscalYear('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  selectedFiscalYear === 'ALL'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'bg-slate-950 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                <span>Consolidated All-Time</span>
+                {selectedFiscalYear === 'ALL' && <CheckCircle className="w-3.5 h-3.5" />}
+              </button>
+
+              {availableYears.map((yr) => (
+                <button
+                  key={yr}
+                  onClick={() => setSelectedFiscalYear(yr)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition flex items-center gap-1.5 cursor-pointer ${
+                    selectedFiscalYear === yr
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-slate-950 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                  }`}
+                >
+                  <span>FY {yr}</span>
+                  {yr === '2026' && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-950 text-emerald-300 rounded border border-emerald-700/60 uppercase">
+                      Current
+                    </span>
+                  )}
+                  {selectedFiscalYear === yr && <CheckCircle className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDashboardSubTab('MULTI_YEAR')}
+                className="px-3.5 py-1.5 bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                title="Open side-by-side multi-year comparative matrix and trajectory charts"
+              >
+                <Scale className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Multi-Year Comparison Matrix</span>
+              </button>
+
+              <div className="text-[11px] text-slate-400 font-mono hidden lg:block">
+                {selectedFiscalYear === 'ALL'
+                  ? `Consolidated: ${filteredIncomes.length} Deposits • ${filteredExpenses.length} Vouchers`
+                  : `FY ${selectedFiscalYear}: ${filteredIncomes.length} Inflows • ${filteredExpenses.length} Outflows`}
+              </div>
+            </div>
+          </div>
+
+          {/* Active Fiscal Year Notice Strip if Filtered */}
+          {selectedFiscalYear !== 'ALL' && (
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-teal-400" />
+                <span>
+                  Filtering Dashboard to <strong className="text-white font-mono">Fiscal Year {selectedFiscalYear}</strong> (Jan 01 – Dec 31, {selectedFiscalYear}). All KPI aggregates, cash flows, and director obligations reflect this fiscal cycle.
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedFiscalYear('ALL')}
+                className="text-[11px] text-emerald-400 hover:underline font-semibold"
+              >
+                Reset to Consolidated All-Time
+              </button>
+            </div>
+          )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -275,23 +438,23 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         </div>
       )}
 
-      {/* Recharts Monthly Trend Analysis Growth Component */}
-      <FinancialTrendChart incomes={incomes} expenses={expenses} />
+      {/* Recharts Monthly Income vs Expense Growth Trends Section */}
+      <MonthlyGrowthTrendsSection incomes={filteredIncomes} expenses={filteredExpenses} />
 
       {/* Recharts Predictive Expense Forecasting & Runway Modeling Component */}
-      <ExpenseForecastChart expenses={expenses} incomes={incomes} />
+      <ExpenseForecastChart expenses={filteredExpenses} incomes={filteredIncomes} />
 
       {/* D3.js Chart: Outstanding Member Dues vs Projected Monthly Income (Cash Flow Gap Visualization) */}
       <CashFlowGapD3Chart
-        incomes={incomes}
-        expenses={expenses}
+        incomes={filteredIncomes}
+        expenses={filteredExpenses}
         members={members}
       />
 
       {/* Tier wise INCOME Vs EXPENSE comparison (Integrated before Director Share Allocation & Balance Matrix) */}
       <TierComparisonMatrix
-        incomes={incomes}
-        expenses={expenses}
+        incomes={filteredIncomes}
+        expenses={filteredExpenses}
       />
 
       {/* Director Summary Dashboard Calculations (Formula: (Total Project Expense * Shares) / 144) */}

@@ -97,6 +97,8 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
   const [showBoardPDFModal, setShowBoardPDFModal] = useState(false);
   const [showOverdueMonitorModal, setShowOverdueMonitorModal] = useState(false);
   const [showSingleAlertModal, setShowSingleAlertModal] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [reconcileCustomNote, setReconcileCustomNote] = useState('');
   const [customAlertNote, setCustomAlertNote] = useState('');
   const [isDispatching, setIsDispatching] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{ success?: string; error?: string } | null>(null);
@@ -533,6 +535,17 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Export to CSV</span>
               </button>
+
+              {canManageAlerts && (
+                <button
+                  onClick={() => setShowReconcileModal(true)}
+                  title="Dispatch an automated in-app notification alert to this member with their updated statement balance"
+                  className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition cursor-pointer"
+                >
+                  <BellRing className="w-3.5 h-3.5 text-cyan-200" />
+                  <span>Notify Member Statement</span>
+                </button>
+              )}
 
               <button
                 onClick={handlePrintOrPDF}
@@ -1385,6 +1398,121 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 0: SEND STATEMENT UPDATE NOTIFICATION ALERT                         */}
+      {/* ========================================================================= */}
+      {showReconcileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BellRing className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">
+                  Send Statement Update In-App Alert
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowReconcileModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Target Member:</span>
+                  <span className="font-bold text-white">
+                    {currentMember.name} ({currentMember.id})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Share Allocation:</span>
+                  <span className="font-mono text-emerald-400">Share #{currentMember.shareNumber} of 144</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Controlling Director:</span>
+                  <span className="text-slate-200">{currentMember.controllingDirectorName}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-800">
+                  <span className="text-slate-400">Total Approved Deposits:</span>
+                  <span className="font-mono text-emerald-400 font-bold">{formatBDT(summary.memberPersonalDeposit)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">1/144 Share Quota Expense:</span>
+                  <span className="font-mono text-rose-400 font-bold">{formatBDT(summary.memberShareExpense)}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-800 font-bold">
+                  <span className="text-slate-300">Net Ledger Balance:</span>
+                  <span className={`font-mono ${summary.currentBalance >= 0 ? 'text-teal-400' : 'text-rose-400'}`}>
+                    {summary.currentBalance >= 0 ? '+' : ''}{formatBDT(summary.currentBalance)} ({summary.currentBalance >= 0 ? 'Surplus Advance' : 'Deficit Arrears'})
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Optional Executive Note (appended to member's alert bell)
+                </label>
+                <textarea
+                  rows={2}
+                  value={reconcileCustomNote}
+                  onChange={(e) => setReconcileCustomNote(e.target.value)}
+                  placeholder="e.g. Your monthly statement has been reconciled against the latest site development vouchers."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="p-3 rounded-lg bg-cyan-950/40 border border-cyan-800/40 text-[11px] text-cyan-300 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <span>
+                  This automated system alert will deliver an instant in-app notification to <strong>{currentMember.name}</strong>'s notification bell, allowing them to click and review their live reconciled ledger statement.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowReconcileModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentUser || !currentMember) return;
+                    storageService.notifyMemberStatementReconciliation(
+                      currentMember.id,
+                      {
+                        memberName: currentMember.name,
+                        totalDeposit: summary.memberPersonalDeposit,
+                        shareExpense: summary.memberShareExpense,
+                        currentBalance: summary.currentBalance,
+                        shareNumber: currentMember.shareNumber,
+                      },
+                      currentUser,
+                      reconcileCustomNote.trim() || undefined
+                    );
+                    setShowReconcileModal(false);
+                    setReconcileCustomNote('');
+                    setActionFeedback({
+                      success: `Automated statement update alert dispatched to ${currentMember.name} (${currentMember.id})!`,
+                    });
+                    setTimeout(() => setActionFeedback(null), 5000);
+                  }}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Dispatch In-App Alert Now</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL 1: SEND SINGLE OVERDUE ALERT VIA INFOCOMMUNICATIONVIEW             */}

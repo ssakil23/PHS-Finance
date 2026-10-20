@@ -22,7 +22,8 @@ import { UserProfileView } from './components/UserProfileView';
 import { ForcePasswordChangeModal } from './components/ForcePasswordChangeModal';
 import { PrintStatementModal } from './components/PrintStatementModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { MemberFinancialSummary } from './utils/calculations';
+import { MemberFinancialSummary, computeProjectFinancials } from './utils/calculations';
+import { DirectorsCalcScreen } from './screens/admin/DirectorsCalcScreen';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
@@ -43,6 +44,8 @@ export default function App() {
 
   // Track initial member drilldown when navigating from Director matrix
   const [drilldownMemberId, setDrilldownMemberId] = useState<string | undefined>();
+
+  const projectFinancials = computeProjectFinancials(incomes, expenses);
 
   useEffect(() => {
     const unsubAuth = authService.subscribe((user) => {
@@ -158,6 +161,15 @@ export default function App() {
             members={members}
             currentUser={currentUser}
             onSelectMemberStatement={handleSelectMemberStatement}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+
+        {activeTab === 'directors_calc' && !isMember && (
+          <DirectorsCalcScreen
+            currentUser={currentUser}
+            totalLiveProjectExpense={projectFinancials.totalProjectExpense}
+            onBack={() => setActiveTab('dashboard')}
           />
         )}
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Search,
   Filter,
   Download,
+  Upload,
   CheckCircle,
   XCircle,
   Trash2,
@@ -15,8 +16,14 @@ import {
   Clock,
   Printer,
   FolderTree,
+  FileSpreadsheet,
+  Check,
+  X,
+  HelpCircle,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
-import { IncomeEntry, IncomeType, PaymentMethod, UserRole, User as UserType, TransactionTier } from '../types';
+import { IncomeEntry, IncomeType, PaymentMethod, UserRole, User as UserType, TransactionTier, Member } from '../types';
 import { formatBDT } from '../utils/calculations';
 import { storageService } from '../services/storageService';
 import {
@@ -31,6 +38,24 @@ interface IncomeModuleProps {
   incomes: IncomeEntry[];
   currentUser: UserType | null;
   onPrintVoucher?: (entry: IncomeEntry) => void;
+}
+
+export interface ParsedDepositRow {
+  rowNum: number;
+  rawMemberId: string;
+  memberId: string;
+  memberName: string;
+  controllingDirector: string;
+  shareNumber: number;
+  amount: number;
+  category: string;
+  date: string;
+  paymentMethod: PaymentMethod;
+  referenceNumber?: string;
+  tier: TransactionTier;
+  remarks: string;
+  isValid: boolean;
+  errors: string[];
 }
 
 const DEPOSIT_TIERS: TransactionTier[] = ['Tier-1', 'Tier-2', 'Tier-3', 'Tier-4', 'Tier-5'];
@@ -54,6 +79,166 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   'bKash / Nagad',
   'Pay Order',
 ];
+
+export const parseCSVText = (text: string, membersList: Member[]): ParsedDepositRow[] => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length === 0) return [];
+
+  // Helper to split a CSV line respecting quotes
+  const splitCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === ',' && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headerTokens = splitCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const isHeaderRow =
+    headerTokens.some((t) => t.includes('member') || t.includes('share') || t.includes('id')) &&
+    headerTokens.some((t) => t.includes('amount') || t.includes('bdt') || t.includes('deposit'));
+
+  // Column index mapping
+  let colMember = 0;
+  let colAmount = 1;
+  let colCategory = 2;
+  let colDate = 3;
+  let colMethod = 4;
+  let colRef = 5;
+  let colTier = 6;
+  let colRemarks = 7;
+
+  let startIndex = 0;
+  if (isHeaderRow) {
+    startIndex = 1;
+    headerTokens.forEach((tok, idx) => {
+      if (tok.includes('member') || tok.includes('shareowner') || tok === 'id') colMember = idx;
+      else if (tok.includes('amount') || tok.includes('bdt')) colAmount = idx;
+      else if (tok.includes('category')) colCategory = idx;
+      else if (tok.includes('date')) colDate = idx;
+      else if (tok.includes('method') || tok.includes('mode')) colMethod = idx;
+      else if (tok.includes('ref') || tok.includes('trx') || tok.includes('cheque')) colRef = idx;
+      else if (tok.includes('tier')) colTier = idx;
+      else if (tok.includes('remark') || tok.includes('memo') || tok.includes('note') || tok.includes('desc')) colRemarks = idx;
+    });
+  }
+
+  const parsed: ParsedDepositRow[] = [];
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.length === 0 || (cols.length === 1 && !cols[0])) continue;
+
+    const rawMemberId = cols[colMember] || '';
+    const rawAmount = cols[colAmount] || '';
+    const rawCategory = cols[colCategory] || 'Member Monthly Contribution';
+    const rawDate = cols[colDate] || '';
+    const rawMethod = cols[colMethod] || 'Bank Transfer';
+    const rawRef = cols[colRef] || '';
+    const rawTier = cols[colTier] || 'Tier-1';
+    const rawRemarks = cols[colRemarks] || 'Bulk CSV Import';
+
+    const errors: string[] = [];
+
+    // Clean member ID: support "PHSM-001", "PHSM-1", "001", "1", "#1"
+    const cleanId = rawMemberId.trim();
+    let foundMember: Member | undefined = undefined;
+    if (cleanId) {
+      foundMember = membersList.find(
+        (m) =>
+          m.id.toLowerCase() === cleanId.toLowerCase() ||
+          String(m.shareNumber) === cleanId.replace(/\D/g, '') ||
+          m.id.toLowerCase() === `phsm-${cleanId.replace(/\D/g, '').padStart(3, '0')}`.toLowerCase()
+      );
+    }
+
+    if (!cleanId) {
+      errors.push('Member ID is missing.');
+    } else if (!foundMember) {
+      errors.push(`Member ID "${cleanId}" not found in registered society shareholders.`);
+    }
+
+    // Amount validation
+    const numAmount = parseFloat(rawAmount.replace(/[^\d.-]/g, ''));
+    if (isNaN(numAmount) || numAmount <= 0) {
+      errors.push(`Invalid amount "${rawAmount}": must be a positive number.`);
+    }
+
+    // Date validation
+    let validDate = new Date().toISOString().split('T')[0];
+    if (rawDate) {
+      const cleanDate = rawDate.replace(/\//g, '-').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+        validDate = cleanDate;
+      } else if (/^\d{2}-\d{2}-\d{4}$/.test(cleanDate)) {
+        const [d, m, y] = cleanDate.split('-');
+        validDate = `${y}-${m}-${d}`;
+      } else {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          validDate = d.toISOString().split('T')[0];
+        } else {
+          errors.push(`Invalid date format "${rawDate}". Use YYYY-MM-DD.`);
+        }
+      }
+    }
+
+    // Payment method normalization
+    const lowerMethod = rawMethod.toLowerCase();
+    let normalizedMethod: PaymentMethod = 'Bank Transfer';
+    if (lowerMethod.includes('cheque') || lowerMethod.includes('check')) normalizedMethod = 'Cheque';
+    else if (lowerMethod.includes('cash')) normalizedMethod = 'Cash';
+    else if (lowerMethod.includes('bkash') || lowerMethod.includes('nagad') || lowerMethod.includes('mobile')) normalizedMethod = 'bKash / Nagad';
+    else if (lowerMethod.includes('order') || lowerMethod.includes('pay order') || lowerMethod.includes('po')) normalizedMethod = 'Pay Order';
+    else normalizedMethod = 'Bank Transfer';
+
+    // Tier normalization
+    let normalizedTier: TransactionTier = 'Tier-1';
+    if (rawTier && ['Tier-1', 'Tier-2', 'Tier-3', 'Tier-4', 'Tier-5'].includes(rawTier.trim())) {
+      normalizedTier = rawTier.trim() as TransactionTier;
+    }
+
+    parsed.push({
+      rowNum: i + 1,
+      rawMemberId,
+      memberId: foundMember ? foundMember.id : cleanId.toUpperCase(),
+      memberName: foundMember ? foundMember.name : 'Unknown Member',
+      controllingDirector: foundMember ? foundMember.controllingDirectorName : 'Unassigned',
+      shareNumber: foundMember ? foundMember.shareNumber : 0,
+      amount: isNaN(numAmount) ? 0 : Math.round(numAmount),
+      category: rawCategory || 'Member Monthly Contribution',
+      date: validDate,
+      paymentMethod: normalizedMethod,
+      referenceNumber: rawRef || undefined,
+      tier: normalizedTier,
+      remarks: rawRemarks,
+      isValid: errors.length === 0,
+      errors,
+    });
+  }
+
+  return parsed;
+};
 
 export const IncomeModule: React.FC<IncomeModuleProps> = ({
   incomes,
@@ -96,6 +281,108 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
     currentUser?.role === 'SYSTEM_ADMIN' || currentUser?.role === 'DELEGATED_ADMIN';
   const canHardDelete = currentUser?.role === 'SYSTEM_ADMIN';
   const canMakeEntry = storageService.isUserEmpoweredForEntry(currentUser);
+
+  // CSV Bulk Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importRawCSV, setImportRawCSV] = useState('');
+  const [parsedRows, setParsedRows] = useState<ParsedDepositRow[]>([]);
+  const [importStatusMode, setImportStatusMode] = useState<'APPROVED' | 'PENDING'>(() =>
+    currentUser?.role === 'SYSTEM_ADMIN' ? 'APPROVED' : 'PENDING'
+  );
+  const [isSubmittingImport, setIsSubmittingImport] = useState(false);
+  const [importSuccessBanner, setImportSuccessBanner] = useState('');
+  const [importErrorBanner, setImportErrorBanner] = useState('');
+  const [showPasteArea, setShowPasteArea] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Template download handler
+  const handleDownloadTemplate = () => {
+    const templateCSV = [
+      'Member ID,Amount (BDT),Category,Transaction Date,Payment Method,Reference / Trx No,Tier,Remarks',
+      'PHSM-001,50000,Member Monthly Contribution,2026-10-15,Bank Transfer,TRX-98234,Tier-1,Monthly Member Contribution',
+      'PHSM-002,75000,Development Fee - Phase 1,2026-10-16,Cheque,CHQ-44021,Tier-1,Quarterly Development Installment',
+      'PHSM-015,120000,Plot Installment,2026-10-18,Bank Transfer,EFT-11204,Tier-2,Site Development Installment #3',
+      'PHSM-042,50000,Member Monthly Contribution,2026-10-18,Cash,CASH-OCT-01,Tier-1,Cash deposit at society office',
+      'PHSM-088,50000,Member Monthly Contribution,2026-10-18,bKash / Nagad,BK-88912,Tier-1,Mobile banking deposit',
+    ].join('\n');
+
+    const blob = new Blob([templateCSV], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'PHS_Member_Deposit_Import_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const processCSVContent = (content: string) => {
+    setImportRawCSV(content);
+    const membersList = storageService.getMembers();
+    const rows = parseCSVText(content, membersList);
+    setParsedRows(rows);
+    if (rows.length === 0) {
+      setImportErrorBanner('No data rows found in the provided CSV content.');
+    } else {
+      setImportErrorBanner('');
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        processCSVContent(text);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExecuteBulkImport = () => {
+    if (!currentUser) return;
+    const validRows = parsedRows.filter((r) => r.isValid);
+    if (validRows.length === 0) {
+      setImportErrorBanner('Cannot import: No valid deposit records to upload.');
+      return;
+    }
+
+    try {
+      setIsSubmittingImport(true);
+      setImportErrorBanner('');
+
+      const entriesToImport = validRows.map((r) => ({
+        shareOwnerId: r.memberId,
+        amount: r.amount,
+        category: r.category,
+        date: r.date,
+        paymentMethod: r.paymentMethod,
+        referenceNumber: r.referenceNumber,
+        tier: r.tier,
+        remarks: r.remarks,
+        status: importStatusMode,
+      }));
+
+      const res = storageService.bulkImportDeposits(entriesToImport, currentUser);
+      setImportSuccessBanner(
+        `Successfully imported ${res.count} member deposits totaling ${formatBDT(res.totalAmount)} (${importStatusMode === 'APPROVED' ? 'Directly Approved' : 'Submitted as Pending for Verification'}).`
+      );
+      setShowImportModal(false);
+      setParsedRows([]);
+      setImportRawCSV('');
+      setImportFileName('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTimeout(() => setImportSuccessBanner(''), 6000);
+    } catch (err: any) {
+      setImportErrorBanner(err.message || 'Bulk import failed.');
+    } finally {
+      setIsSubmittingImport(false);
+    }
+  };
 
   // Handle Share Owner change to auto-fetch member name & director
   const handleMemberIdChange = (id: string) => {
@@ -264,6 +551,22 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Import Success Banner */}
+      {importSuccessBanner && (
+        <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{importSuccessBanner}</span>
+          </div>
+          <button
+            onClick={() => setImportSuccessBanner('')}
+            className="text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -293,6 +596,20 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
             <Download className="w-3.5 h-3.5 text-emerald-400" />
             <span>Export CSV</span>
           </button>
+          {canMakeEntry && (
+            <button
+              onClick={() => {
+                setShowImportModal(true);
+                setImportSuccessBanner('');
+                setImportErrorBanner('');
+              }}
+              className="px-3 py-1.5 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow"
+              title="Bulk upload member deposits using predefined CSV template"
+            >
+              <Upload className="w-3.5 h-3.5 text-teal-300" />
+              <span>Import CSV Deposits</span>
+            </button>
+          )}
           {canMakeEntry ? (
             <>
               <button
@@ -866,6 +1183,316 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CSV Bulk Import Modal for Member Deposits */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden my-8">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Bulk Upload Member Deposits (CSV Import)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                      Predefined Template
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Upload multiple member deposit installments into society ledgers with automatic shareholder validation
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImportModal(false);
+                  setParsedRows([]);
+                  setImportRawCSV('');
+                  setImportFileName('');
+                  setImportErrorBanner('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 text-xs max-h-[80vh] overflow-y-auto">
+              {/* Step 1: Predefined Template Callout & Download */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="font-semibold text-slate-200 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    <span>Official Predefined CSV Template</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Use our verified template containing required headers: <code className="text-emerald-300 font-mono">Member ID, Amount (BDT), Category, Transaction Date, Payment Method, Reference / Trx No, Tier, Remarks</code>.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-emerald-600 hover:text-white text-emerald-300 border border-emerald-700/60 rounded-xl font-semibold flex items-center gap-2 transition shrink-0 shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Sample Template (.CSV)</span>
+                </button>
+              </div>
+
+              {/* Error Banner */}
+              {importErrorBanner && (
+                <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{importErrorBanner}</span>
+                </div>
+              )}
+
+              {/* Upload Dropzone */}
+              <div className="space-y-2">
+                <label className="block text-slate-300 font-semibold">Select CSV File</label>
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <label className="flex-1 w-full border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-5 text-center cursor-pointer bg-slate-950/60 hover:bg-slate-950 transition group">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv, text/csv, text/plain"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <Upload className="w-6 h-6 text-slate-500 group-hover:text-emerald-400 mx-auto mb-1.5 transition" />
+                    <span className="font-semibold text-slate-300 group-hover:text-white block">
+                      {importFileName ? importFileName : 'Click to Browse or Drag & Drop CSV File'}
+                    </span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Supports comma-separated values (.csv) exported from Excel, Sheets, or core banking
+                    </span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPasteArea(!showPasteArea)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl font-semibold transition shrink-0"
+                  >
+                    {showPasteArea ? 'Hide Text Paste' : 'Paste CSV Text'}
+                  </button>
+                </div>
+
+                {showPasteArea && (
+                  <div className="pt-2 space-y-1">
+                    <div className="flex justify-between items-center text-[11px] text-slate-400">
+                      <span>Paste Raw CSV Text Directly:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImportRawCSV('');
+                          setParsedRows([]);
+                        }}
+                        className="text-slate-500 hover:text-slate-300 text-[10px]"
+                      >
+                        Clear Text
+                      </button>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={importRawCSV}
+                      onChange={(e) => processCSVContent(e.target.value)}
+                      placeholder="Member ID,Amount (BDT),Category,Transaction Date,Payment Method,Reference / Trx No,Tier,Remarks&#10;PHSM-001,50000,Member Monthly Contribution,2026-10-15,Bank Transfer,TRX-98234,Tier-1,Monthly Contribution&#10;PHSM-002,75000,Development Fee,2026-10-16,Cheque,CHQ-44021,Tier-1,Phase 1 Installment"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-[11px] focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Live Preview & Verification Table */}
+              {parsedRows.length > 0 && (
+                <div className="space-y-4 pt-2">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                        Total Rows Found
+                      </span>
+                      <span className="text-lg font-mono font-bold text-white mt-0.5 block">
+                        {parsedRows.length}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                      <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
+                        Valid Records
+                      </span>
+                      <span className="text-lg font-mono font-bold text-emerald-400 mt-0.5 block">
+                        {parsedRows.filter((r) => r.isValid).length}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                      <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider block">
+                        Errors / Invalid
+                      </span>
+                      <span className="text-lg font-mono font-bold text-rose-400 mt-0.5 block">
+                        {parsedRows.filter((r) => !r.isValid).length}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                      <span className="text-[10px] uppercase font-bold text-teal-400 tracking-wider block">
+                        Total Valid Amount
+                      </span>
+                      <span className="text-sm font-mono font-bold text-teal-300 mt-1 block">
+                        {formatBDT(
+                          parsedRows.filter((r) => r.isValid).reduce((acc, r) => acc + r.amount, 0)
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Initial Status Setting */}
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="font-semibold text-slate-200 block">Initial Audit / Verification Status</span>
+                      <span className="text-[11px] text-slate-400 block mt-0.5">
+                        Choose whether newly imported deposits are committed directly as Approved or queued for EC Review.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setImportStatusMode('APPROVED')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                          importStatusMode === 'APPROVED'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow'
+                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        ✓ Authorize & Approve Immediately
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImportStatusMode('PENDING')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                          importStatusMode === 'PENDING'
+                            ? 'bg-amber-600 text-white border-amber-500 shadow'
+                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        ⏱ Queue as Pending Review
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Rows Table */}
+                  <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-900 text-slate-400 font-semibold uppercase text-[10px] sticky top-0 border-b border-slate-800">
+                          <tr>
+                            <th className="py-2.5 px-3">#</th>
+                            <th className="py-2.5 px-3">Member ID</th>
+                            <th className="py-2.5 px-3">Shareholder Name</th>
+                            <th className="py-2.5 px-3">Amount (BDT)</th>
+                            <th className="py-2.5 px-3">Category</th>
+                            <th className="py-2.5 px-3">Date</th>
+                            <th className="py-2.5 px-3">Method</th>
+                            <th className="py-2.5 px-3">Ref / Trx</th>
+                            <th className="py-2.5 px-3 text-right">Validation</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/80">
+                          {parsedRows.map((r, idx) => (
+                            <tr
+                              key={idx}
+                              className={
+                                r.isValid
+                                  ? 'hover:bg-slate-900/60 transition'
+                                  : 'bg-rose-950/20 hover:bg-rose-950/30 transition'
+                              }
+                            >
+                              <td className="py-2 px-3 font-mono text-slate-500">{r.rowNum}</td>
+                              <td className="py-2 px-3 font-mono font-bold text-emerald-400">
+                                {r.memberId}
+                              </td>
+                              <td className="py-2 px-3 font-medium text-slate-200">
+                                <div>{r.memberName}</div>
+                                {r.controllingDirector && (
+                                  <div className="text-[10px] text-slate-500">Dir: {r.controllingDirector}</div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 font-mono font-bold text-white">
+                                {formatBDT(r.amount)}
+                              </td>
+                              <td className="py-2 px-3 text-slate-300">{r.category}</td>
+                              <td className="py-2 px-3 font-mono text-slate-400">{r.date}</td>
+                              <td className="py-2 px-3 text-slate-300">{r.paymentMethod}</td>
+                              <td className="py-2 px-3 font-mono text-slate-400">
+                                {r.referenceNumber || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap">
+                                {r.isValid ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-semibold inline-flex items-center gap-1">
+                                    <Check className="w-3 h-3" />
+                                    <span>Valid</span>
+                                  </span>
+                                ) : (
+                                  <span
+                                    title={r.errors.join('; ')}
+                                    className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-semibold inline-flex items-center gap-1 cursor-help"
+                                  >
+                                    <X className="w-3 h-3" />
+                                    <span>{r.errors[0] || 'Invalid'}</span>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setParsedRows([]);
+                    setImportRawCSV('');
+                    setImportFileName('');
+                    setImportErrorBanner('');
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    isSubmittingImport ||
+                    parsedRows.filter((r) => r.isValid).length === 0
+                  }
+                  onClick={handleExecuteBulkImport}
+                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-2 transition cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>
+                    {isSubmittingImport
+                      ? 'Importing into Ledgers...'
+                      : `Confirm & Import ${parsedRows.filter((r) => r.isValid).length} Valid Deposits`}
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

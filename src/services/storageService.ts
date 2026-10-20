@@ -7,6 +7,9 @@
 import {
   Member,
   IncomeEntry,
+  PaymentMethod,
+  EntryStatus,
+  TransactionTier,
   ExpenseEntry,
   AuditLog,
   ChatMessage,
@@ -33,6 +36,8 @@ import {
   SystemSnapshotRecord,
   ShareTransferRecord,
   RecordShareTransferInput,
+  MemberNotification,
+  NotificationType,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -48,6 +53,10 @@ import {
   INITIAL_QUERIES,
   INITIAL_SHARE_TRANSFERS,
 } from '../utils/seedData';
+import {
+  HISTORICAL_INCOMES_2024_2025,
+  HISTORICAL_EXPENSES_2024_2025,
+} from '../utils/multiYearHistoricalData';
 import { ensureMemberDemographics, getDirectorForShareNumber } from '../utils/directors';
 import { formatBDT } from '../utils/calculations';
 
@@ -105,7 +114,67 @@ const STORAGE_KEYS = {
   PERIODIC_PASSWORD_POLICY: 'phs_finance_periodic_password_policy_v1',
   LOCAL_SNAPSHOTS: 'phs_finance_system_snapshots_v1',
   SHARE_TRANSFERS: 'phs_finance_share_transfers_v1',
+  NOTIFICATIONS: 'phs_finance_member_notifications_v1',
 };
+
+export const INITIAL_NOTIFICATIONS: MemberNotification[] = [
+  {
+    id: 'NOTIF-001',
+    memberId: 'PHSM-001',
+    title: 'Deposit Approved & Credited',
+    message: 'Your General Deposit of ৳ 500,000 (Development Fee) has been officially approved and credited to your financial statement.',
+    type: 'DEPOSIT_APPROVED',
+    amountBDT: 500000,
+    referenceId: 'DEP-2026-001',
+    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+    isRead: false,
+    linkTab: 'member_statement',
+  },
+  {
+    id: 'NOTIF-002',
+    memberId: 'PHSM-001',
+    title: 'Financial Statement Reconciled',
+    message: 'Q1-2026 Society development expense allocation completed. Your personal ledger balance is in healthy surplus (ADVANCE).',
+    type: 'STATEMENT_UPDATED',
+    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+    isRead: false,
+    linkTab: 'member_statement',
+  },
+  {
+    id: 'NOTIF-003',
+    memberId: 'ALL',
+    title: 'New Financial Fiscal Cycle Active',
+    message: 'Executive Committee has ratified the 2026 site development budget and updated member contribution schedules.',
+    type: 'SYSTEM_ALERT',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    isRead: true,
+    linkTab: 'dashboard',
+  },
+  {
+    id: 'NOTIF-004',
+    memberId: 'PHSM-002',
+    title: 'Deposit Approved & Credited',
+    message: 'Your General Deposit of ৳ 600,000 (Share Purchase) has been verified and posted to Member Ledger.',
+    type: 'DEPOSIT_APPROVED',
+    amountBDT: 600000,
+    referenceId: 'DEP-2026-002',
+    createdAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+    isRead: false,
+    linkTab: 'member_statement',
+  },
+  {
+    id: 'NOTIF-005',
+    memberId: 'PHSM-007',
+    title: 'Deposit Approved & Credited',
+    message: 'Your General Deposit of ৳ 450,000 has been verified by System Admin.',
+    type: 'DEPOSIT_APPROVED',
+    amountBDT: 450000,
+    referenceId: 'DEP-2026-004',
+    createdAt: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
+    isRead: true,
+    linkTab: 'member_statement',
+  },
+];
 
 export const DEFAULT_PERIODIC_PASSWORD_POLICY: PeriodicPasswordPolicy = {
   initialPassword: '12345679',
@@ -293,21 +362,54 @@ class StorageService {
       localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
     }
 
-    // Fresh Deployment Migration: Remove sample data while preserving all 144 user profiles and credentials
-    const FRESH_DEPLOYMENT_FLAG = 'phs_finance_fresh_deployment_clean_v1';
-    if (!localStorage.getItem(FRESH_DEPLOYMENT_FLAG)) {
-      localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.CHAT, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.QUERIES, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.OVERDUE_ALERTS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.PROFILE_REQUESTS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
-      localStorage.setItem(STORAGE_KEYS.ELECTION, JSON.stringify(INITIAL_ELECTION_POLL));
-      localStorage.setItem(STORAGE_KEYS.LOCAL_SNAPSHOTS, JSON.stringify([]));
-      localStorage.setItem(FRESH_DEPLOYMENT_FLAG, 'true');
+    // Sample Data Initialization for Functional Verification (Preserves all 144 user profiles and credentials)
+    const SAMPLE_DATA_FLAG = 'phs_finance_sample_data_populated_v2';
+    if (!localStorage.getItem(SAMPLE_DATA_FLAG)) {
+      try {
+        const currentIncomes = localStorage.getItem(STORAGE_KEYS.INCOMES);
+        if (!currentIncomes || JSON.parse(currentIncomes || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(INITIAL_INCOMES));
+        }
+
+        const currentExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+        if (!currentExpenses || JSON.parse(currentExpenses || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(INITIAL_EXPENSES));
+        }
+
+        const currentDocs = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+        if (!currentDocs || JSON.parse(currentDocs || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(INITIAL_DOCUMENTS));
+        }
+
+        const currentPosts = localStorage.getItem(STORAGE_KEYS.POSTS);
+        if (!currentPosts || JSON.parse(currentPosts || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(INITIAL_POSTS));
+        }
+
+        const currentQueries = localStorage.getItem(STORAGE_KEYS.QUERIES);
+        if (!currentQueries || JSON.parse(currentQueries || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.QUERIES, JSON.stringify(INITIAL_QUERIES));
+        }
+
+        const currentChat = localStorage.getItem(STORAGE_KEYS.CHAT);
+        if (!currentChat || JSON.parse(currentChat || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.CHAT, JSON.stringify(INITIAL_CHAT_MESSAGES));
+        }
+
+        const currentElection = localStorage.getItem(STORAGE_KEYS.ELECTION);
+        if (!currentElection || !JSON.parse(currentElection || '{}').isActivatedByAdmin) {
+          localStorage.setItem(STORAGE_KEYS.ELECTION, JSON.stringify(INITIAL_ELECTION_POLL));
+        }
+
+        const currentTransfers = localStorage.getItem(STORAGE_KEYS.SHARE_TRANSFERS);
+        if (!currentTransfers || JSON.parse(currentTransfers || '[]').length === 0) {
+          localStorage.setItem(STORAGE_KEYS.SHARE_TRANSFERS, JSON.stringify(INITIAL_SHARE_TRANSFERS));
+        }
+
+        localStorage.setItem(SAMPLE_DATA_FLAG, 'true');
+      } catch (e) {
+        console.error('Error populating sample data:', e);
+      }
     }
   }
 
@@ -344,6 +446,123 @@ class StorageService {
     } catch {
       return INITIAL_AUDIT_LOGS;
     }
+  }
+
+  // --- Automated Member In-App Notification System ---
+  public getNotifications(memberId?: string): MemberNotification[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+      const all: MemberNotification[] = data ? JSON.parse(data) : INITIAL_NOTIFICATIONS;
+      if (!memberId) return all;
+      const cleanTarget = memberId.trim().toUpperCase();
+      return all.filter((n) => n.memberId === 'ALL' || n.memberId.toUpperCase() === cleanTarget);
+    } catch {
+      return INITIAL_NOTIFICATIONS;
+    }
+  }
+
+  public addNotification(
+    notif: Omit<MemberNotification, 'id' | 'createdAt' | 'isRead'>
+  ): MemberNotification {
+    const all = this.getNotifications();
+    const newNotif: MemberNotification = {
+      ...notif,
+      id: `NOTIF-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    };
+    all.unshift(newNotif);
+    // Keep max 200 notifications locally
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(all.slice(0, 200)));
+    this.notify();
+    return newNotif;
+  }
+
+  public markNotificationAsRead(id: string): void {
+    const all = this.getNotifications();
+    const index = all.findIndex((n) => n.id === id);
+    if (index >= 0) {
+      all[index].isRead = true;
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(all));
+      this.notify();
+    }
+  }
+
+  public markAllNotificationsAsRead(memberId?: string): void {
+    const all = this.getNotifications();
+    if (!memberId) {
+      all.forEach((n) => (n.isRead = true));
+    } else {
+      const cleanTarget = memberId.trim().toUpperCase();
+      all.forEach((n) => {
+        if (n.memberId === 'ALL' || n.memberId.toUpperCase() === cleanTarget) {
+          n.isRead = true;
+        }
+      });
+    }
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(all));
+    this.notify();
+  }
+
+  public clearNotifications(memberId?: string): void {
+    if (!memberId) {
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([]));
+    } else {
+      const all = this.getNotifications();
+      const cleanTarget = memberId.trim().toUpperCase();
+      const filtered = all.filter(
+        (n) => n.memberId !== 'ALL' && n.memberId.toUpperCase() !== cleanTarget
+      );
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(filtered));
+    }
+    this.notify();
+  }
+
+  public notifyMemberStatementUpdate(memberId: string, summary: string): void {
+    this.addNotification({
+      memberId,
+      title: 'Financial Statement Reconciled',
+      message: summary,
+      type: 'STATEMENT_UPDATED',
+      linkTab: 'member_statement',
+    });
+  }
+
+  public notifyMemberStatementReconciliation(
+    memberId: string,
+    summary: {
+      memberName: string;
+      totalDeposit: number;
+      shareExpense: number;
+      currentBalance: number;
+      shareNumber: number;
+    },
+    reconciledBy: User,
+    customNote?: string
+  ): MemberNotification {
+    const balanceStatus = summary.currentBalance >= 0 
+      ? `Credit Surplus: ${formatBDT(summary.currentBalance)}` 
+      : `Deficit Arrears: ${formatBDT(Math.abs(summary.currentBalance))}`;
+
+    const notif = this.addNotification({
+      memberId,
+      title: 'Financial Statement Reconciled & Audited',
+      message: `Your share capital ledger (Share #${summary.shareNumber}) has been reviewed and certified by ${reconciledBy.name} (${reconciledBy.role.replace('_', ' ')}). Total Deposits: ${formatBDT(summary.totalDeposit)} | 1/144 Share Quota: ${formatBDT(summary.shareExpense)} | Status: ${balanceStatus}.${customNote ? ` Note: ${customNote}` : ''}`,
+      type: 'STATEMENT_UPDATED',
+      amountBDT: summary.totalDeposit,
+      referenceId: `REC-${memberId}-${Date.now().toString(36).toUpperCase()}`,
+      linkTab: 'member_statement',
+    });
+
+    this.logAudit(
+      reconciledBy,
+      'UPDATE',
+      'MEMBER',
+      memberId,
+      `Audited and dispatched in-app statement update notification to ${summary.memberName} (${memberId}, Share #${summary.shareNumber}). Current Balance: ${formatBDT(summary.currentBalance)}`
+    );
+
+    return notif;
   }
 
   // --- Members ---
@@ -414,6 +633,112 @@ class StorageService {
       );
       this.notify();
     }
+  }
+
+  /**
+   * Bulk import & update members basic demographic and contact data matched by Member ID.
+   * Updates: Full Name, Primary Phone, Official Email, Current Address, Permanent Address, Spouse Name, Spouse Mobile.
+   * Strictly preserves existing share numbers, controlling directors, passwords, and user credentials.
+   */
+  public bulkImportMembersBasicData(
+    rows: Array<{
+      memberId: string;
+      name?: string;
+      phone?: string;
+      email?: string;
+      currentAddress?: string;
+      permanentAddress?: string;
+      spouseName?: string;
+      spouseMobile?: string;
+    }>,
+    currentUser: User
+  ): { success: boolean; updatedCount: number; errors: string[]; updatedMembers: Member[] } {
+    if (
+      currentUser.role !== 'SYSTEM_ADMIN' &&
+      currentUser.role !== 'DELEGATED_ADMIN' &&
+      currentUser.role !== 'MANAGER' &&
+      currentUser.role !== 'OFFICIAL'
+    ) {
+      throw new Error('Access Denied: Only Officials, Delegated Admins, or System Admins can import member registry data.');
+    }
+
+    if (!rows || rows.length === 0) {
+      throw new Error('No member rows provided for bulk import.');
+    }
+
+    const members = this.getMembers();
+    const updatedMembers: Member[] = [];
+    const errors: string[] = [];
+    let updatedCount = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rawId = (row.memberId || '').trim();
+      if (!rawId) {
+        errors.push(`Row ${i + 1}: Member ID is missing.`);
+        continue;
+      }
+
+      // Match by exact id, share number, or padded id
+      const cleanShareNum = rawId.replace(/\D/g, '');
+      const memberIndex = members.findIndex(
+        (m) =>
+          m.id.toLowerCase() === rawId.toLowerCase() ||
+          (cleanShareNum && String(m.shareNumber) === cleanShareNum) ||
+          m.id.toLowerCase() === `phsm-${cleanShareNum.padStart(3, '0')}`.toLowerCase()
+      );
+
+      if (memberIndex === -1) {
+        errors.push(`Row ${i + 1}: Member ID "${rawId}" not found in registered 144 society shareholders.`);
+        continue;
+      }
+
+      const existingMember = members[memberIndex];
+      const newName = row.name !== undefined && row.name.trim() ? row.name.trim() : existingMember.name;
+      const newPhone = row.phone !== undefined && row.phone.trim() ? row.phone.trim() : existingMember.phone;
+      const newEmail = row.email !== undefined && row.email.trim() ? row.email.trim() : existingMember.email;
+      const newCurrentAddr = row.currentAddress !== undefined && row.currentAddress.trim() ? row.currentAddress.trim() : existingMember.currentAddress;
+      const newPermAddr = row.permanentAddress !== undefined && row.permanentAddress.trim() ? row.permanentAddress.trim() : existingMember.permanentAddress;
+      const newSpouseName = row.spouseName !== undefined ? row.spouseName.trim() : existingMember.spouseName;
+      const newSpouseMobile = row.spouseMobile !== undefined ? row.spouseMobile.trim() : existingMember.spouseMobile;
+
+      const updatedMember: Member = {
+        ...existingMember,
+        name: newName,
+        phone: newPhone,
+        email: newEmail,
+        currentAddress: newCurrentAddr,
+        address: newCurrentAddr || existingMember.address,
+        permanentAddress: newPermAddr,
+        spouseName: newSpouseName,
+        spouseMobile: newSpouseMobile,
+      };
+
+      members[memberIndex] = updatedMember;
+      updatedMembers.push(updatedMember);
+      updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+
+      this.logAudit(
+        currentUser,
+        'MEMBER_UPDATE',
+        'MEMBER',
+        `BULK-MEM-${Date.now()}`,
+        `Bulk updated basic contact & demographic data for ${updatedCount} members via CSV import.`
+      );
+
+      this.notify();
+    }
+
+    return {
+      success: updatedCount > 0,
+      updatedCount,
+      errors,
+      updatedMembers,
+    };
   }
 
   // --- Profile Requests Workflow (Edit, Modify & Approve) ---
@@ -658,6 +983,20 @@ class StorageService {
       }
       delete m.pendingUpdate;
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+
+      // Also update linked active session user name if matching memberId
+      try {
+        const rawAuth = localStorage.getItem('phs_finance_auth_user_v1');
+        if (rawAuth) {
+          const authUser = JSON.parse(rawAuth);
+          if (authUser && authUser.memberId && authUser.memberId.toLowerCase() === req.memberId.toLowerCase()) {
+            authUser.name = m.name;
+            localStorage.setItem('phs_finance_auth_user_v1', JSON.stringify(authUser));
+          }
+        }
+      } catch (e) {
+        // Continue gracefully
+      }
 
       this.logAudit(
         currentUser,
@@ -1105,10 +1444,22 @@ class StorageService {
   public getIncomes(): IncomeEntry[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.INCOMES);
-      const incomes: IncomeEntry[] = data ? JSON.parse(data) : INITIAL_INCOMES;
+      let incomes: IncomeEntry[] = data ? JSON.parse(data) : INITIAL_INCOMES;
       const defaultTiers: ('Tier-1' | 'Tier-2' | 'Tier-3' | 'Tier-4' | 'Tier-5')[] = [
         'Tier-1', 'Tier-2', 'Tier-3', 'Tier-4', 'Tier-5'
       ];
+      
+      // Ensure multi-year historical data (FY 2024 & FY 2025) is seamlessly available for multi-year comparisons
+      const hasHistorical = incomes.some((i) => i.date && (i.date.startsWith('2024') || i.date.startsWith('2025')));
+      if (!hasHistorical) {
+        incomes = [...incomes, ...HISTORICAL_INCOMES_2024_2025];
+        try {
+          localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+        } catch {
+          // ignore quota issues
+        }
+      }
+
       incomes.forEach((inc, idx) => {
         if (!inc.tier) {
           inc.tier = defaultTiers[idx % defaultTiers.length];
@@ -1116,7 +1467,7 @@ class StorageService {
       });
       return incomes;
     } catch {
-      return INITIAL_INCOMES;
+      return [...INITIAL_INCOMES, ...HISTORICAL_INCOMES_2024_2025];
     }
   }
 
@@ -1149,8 +1500,138 @@ class StorageService {
       `Submitted ${entry.type} of ${formatBDT(entry.amount)} (Category: ${entry.category}, Status: ${entry.status})`
     );
 
+    // Automated in-app notification to member
+    if (newEntry.shareOwnerId) {
+      this.addNotification({
+        memberId: newEntry.shareOwnerId,
+        title: newEntry.status === 'APPROVED' ? 'Deposit Approved & Credited' : 'New Deposit Recorded',
+        message: newEntry.status === 'APPROVED'
+          ? `Your deposit of ${formatBDT(newEntry.amount)} (${newEntry.category}) has been credited to your member ledger.`
+          : `A new deposit of ${formatBDT(newEntry.amount)} (${newEntry.category}) has been recorded and submitted for verification.`,
+        type: newEntry.status === 'APPROVED' ? 'DEPOSIT_APPROVED' : 'DEPOSIT_RECORDED',
+        amountBDT: newEntry.amount,
+        referenceId: newId,
+        linkTab: 'member_statement',
+      });
+    }
+
     this.notify();
     return newEntry;
+  }
+
+  /**
+   * Bulk import member deposits from CSV with validation and ledger integration.
+   */
+  public bulkImportDeposits(
+    entries: Array<{
+      shareOwnerId: string;
+      amount: number;
+      category?: string;
+      date?: string;
+      paymentMethod?: PaymentMethod;
+      referenceNumber?: string;
+      tier?: TransactionTier;
+      remarks?: string;
+      status?: EntryStatus;
+    }>,
+    currentUser: User
+  ): { success: boolean; count: number; totalAmount: number; entries: IncomeEntry[] } {
+    if (!this.isUserEmpoweredForEntry(currentUser)) {
+      throw new Error('Access Denied: Only empowered Officials or System Admin can record Income entries.');
+    }
+
+    if (!entries || entries.length === 0) {
+      throw new Error('No deposit entries provided for bulk import.');
+    }
+
+    const incomes = this.getIncomes();
+    const members = this.getMembers();
+    const year = new Date().getFullYear();
+    let count = incomes.length;
+    const createdEntries: IncomeEntry[] = [];
+    let totalAmount = 0;
+
+    for (const item of entries) {
+      count++;
+      const newId = `DEP-${year}-${String(count).padStart(3, '0')}`;
+
+      // Resolve member record
+      const cleanId = (item.shareOwnerId || '').trim();
+      const foundMember = members.find(
+        (m) =>
+          m.id.toLowerCase() === cleanId.toLowerCase() ||
+          String(m.shareNumber) === cleanId.replace(/\D/g, '')
+      );
+
+      const resolvedMemberId = foundMember ? foundMember.id : cleanId.toUpperCase();
+      const resolvedMemberName = foundMember ? foundMember.name : `Member ${resolvedMemberId}`;
+      const resolvedDirector = foundMember ? foundMember.controllingDirectorName : 'Unassigned Director';
+      const resolvedShareNumber = foundMember ? foundMember.shareNumber : parseInt(cleanId.replace(/\D/g, '') || '0', 10);
+
+      const status: EntryStatus = item.status || (currentUser.role === 'SYSTEM_ADMIN' ? 'APPROVED' : 'PENDING');
+      const isApproved = status === 'APPROVED';
+
+      const entry: IncomeEntry = {
+        id: newId,
+        type: 'GENERAL_DEPOSIT',
+        amount: Math.round(Number(item.amount) || 0),
+        category: item.category?.trim() || 'Member Contribution',
+        date: item.date?.trim() || new Date().toISOString().split('T')[0],
+        tier: item.tier || 'Tier-1',
+        shareOwnerId: resolvedMemberId,
+        memberName: resolvedMemberName,
+        controllingDirector: resolvedDirector,
+        shareNumber: resolvedShareNumber,
+        paymentMethod: item.paymentMethod || 'Bank Transfer',
+        referenceNumber: item.referenceNumber?.trim() || undefined,
+        remarks: item.remarks?.trim() || 'Bulk CSV Import',
+        submitterId: currentUser.id,
+        submitterName: currentUser.name,
+        submitterRole: currentUser.role,
+        status,
+        approvedBy: isApproved ? currentUser.id : undefined,
+        approvedByName: isApproved ? currentUser.name : undefined,
+        approvedAt: isApproved ? new Date().toISOString() : undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      createdEntries.push(entry);
+      totalAmount += entry.amount;
+
+      // Automated in-app notification to member
+      if (entry.shareOwnerId) {
+        this.addNotification({
+          memberId: entry.shareOwnerId,
+          title: entry.status === 'APPROVED' ? 'Deposit Approved & Credited' : 'Deposit Recorded via Bulk Upload',
+          message: `A deposit of ${formatBDT(entry.amount)} (${entry.category}) has been recorded to your member ledger (Status: ${entry.status}).`,
+          type: entry.status === 'APPROVED' ? 'DEPOSIT_APPROVED' : 'DEPOSIT_RECORDED',
+          amountBDT: entry.amount,
+          referenceId: entry.id,
+          linkTab: 'member_statement',
+        });
+      }
+    }
+
+    incomes.unshift(...createdEntries);
+    localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'INCOME',
+      `BULK-DEP-${Date.now()}`,
+      `Bulk uploaded ${createdEntries.length} member deposits via CSV totaling ${formatBDT(totalAmount)} (Initial Status: ${createdEntries[0]?.status})`
+    );
+
+    this.notify();
+
+    return {
+      success: true,
+      count: createdEntries.length,
+      totalAmount,
+      entries: createdEntries,
+    };
   }
 
   public updateIncome(entry: IncomeEntry, currentUser: User): void {
@@ -1169,6 +1650,20 @@ class StorageService {
         entry.id,
         `Updated income record ${entry.id} (${formatBDT(entry.amount)})`
       );
+
+      // Automated in-app notification to member whenever income record is updated
+      if (entry.shareOwnerId) {
+        this.addNotification({
+          memberId: entry.shareOwnerId,
+          title: 'Financial Statement / Deposit Updated',
+          message: `Your deposit record (${entry.id}) for ${entry.category} has been updated to ${formatBDT(entry.amount)} by ${currentUser.name}. Your ledger statement has been re-indexed.`,
+          type: 'STATEMENT_UPDATED',
+          amountBDT: entry.amount,
+          referenceId: entry.id,
+          linkTab: 'member_statement',
+        });
+      }
+
       this.notify();
     }
   }
@@ -1204,6 +1699,32 @@ class StorageService {
           rejectionReason ? ` Reason: ${rejectionReason}` : ''
         }`
       );
+
+      // Automated in-app notification to member
+      if (entry.shareOwnerId) {
+        if (status === 'APPROVED') {
+          this.addNotification({
+            memberId: entry.shareOwnerId,
+            title: 'Deposit Approved & Credited',
+            message: `Your deposit of ${formatBDT(entry.amount)} (${entry.category}) has been verified & approved by ${currentUser.name} and credited to your ledger.`,
+            type: 'DEPOSIT_APPROVED',
+            amountBDT: entry.amount,
+            referenceId: entry.id,
+            linkTab: 'member_statement',
+          });
+        } else if (status === 'REJECTED') {
+          this.addNotification({
+            memberId: entry.shareOwnerId,
+            title: 'Deposit Requires Review / Rejected',
+            message: `Your deposit submission of ${formatBDT(entry.amount)} (${entry.category}) was rejected. Reason: ${rejectionReason || 'Documentation discrepancy'}.`,
+            type: 'DEPOSIT_REJECTED',
+            amountBDT: entry.amount,
+            referenceId: entry.id,
+            linkTab: 'member_statement',
+          });
+        }
+      }
+
       this.notify();
     }
   }
@@ -1476,6 +1997,27 @@ class StorageService {
       `Executed Official Share Transfer #${transferId}: Transferred Share #${input.transferredShareNumber} from ${fromMember.name} (${fromMember.id}) to ${toMember.name} (${toMember.id}). Capital Amount: ${formatBDT(input.transferredAmount)}, Fee: ${formatBDT(input.transferFeeBDT)}. Resolution: ${input.resolutionNumber}`
     );
 
+    // 7. Automated in-app notifications to both members
+    this.addNotification({
+      memberId: fromMember.id,
+      title: 'Share Transfer Executed & Statement Reconciled',
+      message: `Share #${input.transferredShareNumber} has been officially transferred to ${toMember.name} (${toMember.id}). Capital liquidation of ${formatBDT(input.transferredAmount)} recorded on your statement.`,
+      type: 'STATEMENT_UPDATED',
+      amountBDT: input.transferredAmount,
+      referenceId: transferId,
+      linkTab: 'member_statement',
+    });
+
+    this.addNotification({
+      memberId: toMember.id,
+      title: 'Share Transfer Credited & Statement Updated',
+      message: `Share #${input.transferredShareNumber} transferred from ${fromMember.name} (${fromMember.id}) has been registered to your profile. Capital equity of ${formatBDT(input.transferredAmount)} credited to your statement.`,
+      type: 'DEPOSIT_APPROVED',
+      amountBDT: input.transferredAmount,
+      referenceId: transferId,
+      linkTab: 'member_statement',
+    });
+
     this.notify();
     return {
       transfer: transferRecord,
@@ -1489,10 +2031,22 @@ class StorageService {
   public getExpenses(): ExpenseEntry[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      const expenses: ExpenseEntry[] = data ? JSON.parse(data) : INITIAL_EXPENSES;
+      let expenses: ExpenseEntry[] = data ? JSON.parse(data) : INITIAL_EXPENSES;
       const defaultTiers: ('Tier-1' | 'Tier-2' | 'Tier-3' | 'Tier-4' | 'Tier-5')[] = [
         'Tier-1', 'Tier-2', 'Tier-3', 'Tier-4', 'Tier-5'
       ];
+
+      // Ensure multi-year historical data (FY 2024 & FY 2025) is seamlessly available for multi-year comparisons
+      const hasHistoricalExp = expenses.some((e) => e.date && (e.date.startsWith('2024') || e.date.startsWith('2025')));
+      if (!hasHistoricalExp) {
+        expenses = [...expenses, ...HISTORICAL_EXPENSES_2024_2025];
+        try {
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+        } catch {
+          // ignore quota issues
+        }
+      }
+
       expenses.forEach((exp, idx) => {
         if (!exp.tier) {
           exp.tier = defaultTiers[idx % defaultTiers.length];
@@ -1500,7 +2054,7 @@ class StorageService {
       });
       return expenses;
     } catch {
-      return INITIAL_EXPENSES;
+      return [...INITIAL_EXPENSES, ...HISTORICAL_EXPENSES_2024_2025];
     }
   }
 
@@ -1780,6 +2334,87 @@ class StorageService {
 
     this.notify();
     return newEntry;
+  }
+
+  /**
+   * Bulk import operational expenses from CSV with validation and ledger integration.
+   */
+  public bulkImportExpenses(
+    entries: Array<{
+      category?: string;
+      amount: number;
+      date?: string;
+      billRecipient: string;
+      voucherNumber?: string;
+      tier?: TransactionTier;
+      remarks?: string;
+      status?: EntryStatus;
+    }>,
+    currentUser: User
+  ): { success: boolean; count: number; totalAmount: number; entries: ExpenseEntry[] } {
+    if (!this.isUserEmpoweredForEntry(currentUser)) {
+      throw new Error('Access Denied: Only empowered Officials or System Admin can record Expense entries.');
+    }
+
+    if (!entries || entries.length === 0) {
+      throw new Error('No expense entries provided for bulk import.');
+    }
+
+    const expenses = this.getExpenses();
+    const year = new Date().getFullYear();
+    let count = expenses.length;
+    const createdEntries: ExpenseEntry[] = [];
+    let totalAmount = 0;
+
+    for (const item of entries) {
+      count++;
+      const newId = `EXP-${year}-${String(count).padStart(3, '0')}`;
+      const status: EntryStatus = item.status || (currentUser.role === 'SYSTEM_ADMIN' ? 'APPROVED' : 'PENDING');
+      const isApproved = status === 'APPROVED';
+      const cleanAmount = Math.round(Number(item.amount) || 0);
+
+      const entry: ExpenseEntry = {
+        id: newId,
+        category: item.category?.trim() || 'Site Development',
+        amount: cleanAmount,
+        date: item.date?.trim() || new Date().toISOString().split('T')[0],
+        billRecipient: item.billRecipient?.trim() || 'General Contractor',
+        voucherNumber: item.voucherNumber?.trim() || undefined,
+        tier: item.tier || 'Tier-1',
+        remarks: item.remarks?.trim() || 'Bulk CSV Import',
+        submitterId: currentUser.id,
+        submitterName: currentUser.name,
+        submitterRole: currentUser.role,
+        status,
+        approvedBy: isApproved ? currentUser.id : undefined,
+        approvedByName: isApproved ? currentUser.name : undefined,
+        approvedAt: isApproved ? new Date().toISOString() : undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      createdEntries.push(entry);
+      expenses.unshift(entry);
+      totalAmount += cleanAmount;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'EXPENSE',
+      `BULK-EXP-${Date.now()}`,
+      `Bulk imported ${createdEntries.length} operational expense vouchers totaling ${formatBDT(totalAmount)} via CSV (Status: ${createdEntries[0]?.status || 'PENDING'}).`
+    );
+
+    this.notify();
+    return {
+      success: true,
+      count: createdEntries.length,
+      totalAmount,
+      entries: createdEntries,
+    };
   }
 
   // --- Official Staff Management & Entry Empowerment ---
@@ -2509,6 +3144,88 @@ class StorageService {
     return {
       success: true,
       message: `Password for ${cleanTarget} successfully reset to ${isCustomReset ? 'assigned password' : 'system default ("' + systemDefault + '")'}. User will be required to change it upon next login.`,
+    };
+  }
+
+  /**
+   * Bulk reset passwords for all users to the system default password.
+   * System Admin only.
+   */
+  public resetAllUsersPassword(
+    currentUser: User,
+    excludeRootAdmin: boolean = true
+  ): { success: boolean; message: string; count: number } {
+    if (currentUser.role !== 'SYSTEM_ADMIN') {
+      throw new Error('Unauthorized: Only System Admin can reset passwords for all users.');
+    }
+
+    const sysDefault = this.getSystemDefaultPassword();
+    const members = this.getMembers();
+    const officials = this.getOfficials();
+
+    let passwords: Record<string, string> = {};
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PASSWORDS);
+      if (data) passwords = JSON.parse(data);
+    } catch {}
+
+    let changedUsers: Record<string, boolean> = {};
+    try {
+      const cData = localStorage.getItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS);
+      if (cData) changedUsers = JSON.parse(cData);
+    } catch {}
+
+    let resetCount = 0;
+
+    // Reset all members
+    members.forEach((m) => {
+      const isSakil = m.id === 'PHSM-001' || m.name.toLowerCase().includes('sakil');
+      if (excludeRootAdmin && isSakil) return;
+
+      const aliases = this.getAllAliasesForUser(m.id);
+      const allAliases = [m.id, m.id.toLowerCase(), String(m.shareNumber), ...aliases];
+      allAliases.forEach((alias) => {
+        delete passwords[alias.toLowerCase()];
+        delete passwords[alias];
+        delete changedUsers[alias.toLowerCase()];
+        delete changedUsers[alias];
+      });
+      resetCount++;
+    });
+
+    // Reset all officials
+    officials.forEach((off) => {
+      const isSakil = off.username === 'ssakil' || off.name.toLowerCase().includes('sakil');
+      if (excludeRootAdmin && isSakil) return;
+
+      const aliases = this.getAllAliasesForUser(off.username);
+      const allAliases = [off.username, off.username.toLowerCase(), off.id, ...aliases];
+      allAliases.forEach((alias) => {
+        delete passwords[alias.toLowerCase()];
+        delete passwords[alias];
+        delete changedUsers[alias.toLowerCase()];
+        delete changedUsers[alias];
+      });
+      resetCount++;
+    });
+
+    localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(passwords));
+    localStorage.setItem(STORAGE_KEYS.PASSWORD_CHANGED_USERS, JSON.stringify(changedUsers));
+
+    this.logAudit(
+      currentUser,
+      'PASSWORD_RESET',
+      'USER',
+      'ALL_USERS',
+      `System Admin ${currentUser.name} reset passwords for ALL users (${resetCount} accounts) to system default ("${sysDefault}"). Forced change required on next login.`
+    );
+
+    this.notify();
+
+    return {
+      success: true,
+      count: resetCount,
+      message: `Successfully reset passwords for all ${resetCount} user accounts to system default ("${sysDefault}"). All users will be required to change their password upon their next login.`,
     };
   }
 
@@ -4373,7 +5090,18 @@ Prottasha Housing Society Executive Committee`;
       console.error('Failed to attach document in InfoCommunicationView:', e);
     }
 
-    // 3. Log Audit Entry
+    // 3. Automated In-App Alert to Member
+    this.addNotification({
+      memberId: member.id,
+      title: 'Action Required: Overdue Capital Balance',
+      message: `An overdue deficit of ${formatBDT(overdueAmount)} has been identified on your 1/144th share quota account (Share #${member.shareNumber}). Demand notice has been dispatched.`,
+      type: 'STATEMENT_UPDATED',
+      amountBDT: overdueAmount,
+      referenceId: alertId,
+      linkTab: 'member_statement',
+    });
+
+    // 4. Log Audit Entry
     this.logAudit(
       senderUser,
       'CREATE',
