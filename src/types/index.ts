@@ -129,6 +129,19 @@ export type EntryStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type TransactionTier = 'Tier-1' | 'Tier-2' | 'Tier-3' | 'Tier-4' | 'Tier-5';
 
+export interface EntryAttachment {
+  id: string; // e.g., 'ATT-INC-1718901234567'
+  name: string; // filename, e.g., 'receipt_bank_slip.jpg'
+  size: number; // in bytes
+  type: string; // mime type e.g., 'image/jpeg', 'image/png', 'application/pdf'
+  dataUrl: string; // base64 data URL for client storage/preview
+  uploadedAt: string;
+  uploadedBy: string; // username or userId
+  uploadedByName?: string;
+  documentType?: 'Receipt' | 'Voucher' | 'Memo' | 'Invoice' | 'Cheque' | 'Bank Slip' | 'Other';
+  note?: string;
+}
+
 export interface IncomeEntry {
   id: string; // e.g., 'DEP-2026-001'
   type: IncomeType;
@@ -160,6 +173,8 @@ export interface IncomeEntry {
   approvedByName?: string;
   approvedAt?: string;
   rejectionReason?: string;
+
+  attachments?: EntryAttachment[];
 
   isSoftDeleted?: boolean;
   createdAt: string;
@@ -202,6 +217,8 @@ export interface ExpenseEntry {
   approvedByName?: string;
   approvedAt?: string;
   rejectionReason?: string;
+
+  attachments?: EntryAttachment[];
 
   isSoftDeleted?: boolean;
   createdAt: string;
@@ -312,6 +329,7 @@ export interface AuditLog {
   action: 
     | 'CREATE' 
     | 'UPDATE' 
+    | 'DELETE'
     | 'SOFT_DELETE' 
     | 'HARD_DELETE' 
     | 'APPROVE' 
@@ -326,8 +344,11 @@ export interface AuditLog {
     | 'UNLOCK_USER'
     | 'PASSWORD_RESET'
     | 'BUDGET_UPDATE'
+    | 'IMPOSE_PENALTY'
+    | 'WAIVE_PENALTY'
+    | 'PENALTY_VISIBILITY'
     | 'LOGIN';
-  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET' | 'SHARE_TRANSFER';
+  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET' | 'SHARE_TRANSFER' | 'PENALTY';
   entityId: string;
   details: string;
   ipAddress?: string;
@@ -671,6 +692,48 @@ export interface MemberNotification {
   createdAt: string;
   isRead: boolean;
   linkTab?: string; // Tab to navigate to (e.g. 'member_statement', 'incomes')
+}
+
+export type PenaltyImpositionType = 'MANUAL_FIXED' | 'PERCENTAGE_DUE';
+
+export interface SharePenaltyRecord {
+  id: string; // e.g. 'PEN-2026-001'
+  memberId: string; // 'PHSM-001'
+  memberName: string;
+  shareNumber: number;
+  controllingDirectorKey: string;
+  controllingDirectorName: string;
+  impositionType: PenaltyImpositionType;
+  penaltyAmount: number; // in BDT (auto-deducted from member deposits)
+  percentageRate?: number; // e.g., 5% or 10% if PERCENTAGE_DUE
+  dueBaseAmount?: number; // baseline overdue amount at imposition
+  reason: string; // e.g. 'Late payment of Phase 1 Installment'
+  category?: string; // Late Installment, Utility Default, Surcharge, etc.
+  imposedBy: string; // Admin userId / username
+  imposedByName: string;
+  imposedByRole: UserRole;
+  imposedAt: string; // ISO date-time
+  fiscalYear: string; // e.g. '2026'
+  status: 'IMPOSED' | 'WAIVED';
+  incomeEntryId?: string; // Linked IncomeEntry DEP-XXXX treated as system income
+  isDeductedFromDeposit: boolean; // true
+  waivedAt?: string;
+  waivedBy?: string;
+  waivedByName?: string;
+  waiveReason?: string;
+  notes?: string;
+}
+
+export interface ImposePenaltyInput {
+  memberId: string;
+  impositionType: PenaltyImpositionType;
+  penaltyAmount: number;
+  percentageRate?: number;
+  dueBaseAmount?: number;
+  reason: string;
+  category?: string;
+  notes?: string;
+  paymentMethod?: PaymentMethod;
 }
 
 

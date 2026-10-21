@@ -22,8 +22,9 @@ import {
   HelpCircle,
   CheckCircle2,
   RefreshCw,
+  Paperclip,
 } from 'lucide-react';
-import { IncomeEntry, IncomeType, PaymentMethod, UserRole, User as UserType, TransactionTier, Member } from '../types';
+import { IncomeEntry, IncomeType, PaymentMethod, UserRole, User as UserType, TransactionTier, Member, EntryAttachment } from '../types';
 import { formatBDT } from '../utils/calculations';
 import { storageService } from '../services/storageService';
 import {
@@ -33,6 +34,7 @@ import {
   TOTAL_SHARES,
 } from '../utils/directors';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { EntryAttachmentModal } from './EntryAttachmentModal';
 
 interface IncomeModuleProps {
   incomes: IncomeEntry[];
@@ -277,6 +279,50 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
   const [remarks, setRemarks] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
 
+  // Attachment Management States
+  const [selectedAttachmentEntry, setSelectedAttachmentEntry] = useState<IncomeEntry | null>(null);
+  const [formAttachments, setFormAttachments] = useState<Omit<EntryAttachment, 'id' | 'uploadedAt'>[]>([]);
+  const [formAttachmentType, setFormAttachmentType] = useState<EntryAttachment['documentType']>('Receipt');
+  const [formAttachmentNote, setFormAttachmentNote] = useState<string>('');
+  const formAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFormFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError(`Attachment exceeds 5MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormAttachments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            size: file.size,
+            type: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+            dataUrl,
+            uploadedBy: currentUser?.username || currentUser?.id || 'staff',
+            uploadedByName: currentUser?.name || 'Staff User',
+            documentType: formAttachmentType,
+            note: formAttachmentNote.trim() || undefined,
+          },
+        ]);
+        setFormAttachmentNote('');
+        if (formAttachmentInputRef.current) formAttachmentInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeFormAttachment = (index: number) => {
+    setFormAttachments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
   const canApprove =
     currentUser?.role === 'SYSTEM_ADMIN' || currentUser?.role === 'DELEGATED_ADMIN';
   const canHardDelete = currentUser?.role === 'SYSTEM_ADMIN';
@@ -442,6 +488,11 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
         approvedBy: initialStatus === 'APPROVED' ? currentUser.id : undefined,
         approvedByName: initialStatus === 'APPROVED' ? currentUser.name : undefined,
         approvedAt: initialStatus === 'APPROVED' ? new Date().toISOString() : undefined,
+        attachments: formAttachments.map((fa, i) => ({
+          ...fa,
+          id: `ATT-INC-${Date.now()}-${i}`,
+          uploadedAt: new Date().toISOString(),
+        })),
       },
       currentUser
     );
@@ -453,6 +504,8 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
     setReferenceNumber('');
     setRemarks('');
     setSalesDescription('');
+    setFormAttachments([]);
+    setFormAttachmentNote('');
   };
 
   // Actions
@@ -735,7 +788,7 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
       {/* Ledger Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
               <tr>
                 <th className="py-3 px-4">Deposit ID</th>
@@ -745,6 +798,7 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
                 <th className="py-3 px-4">Member / Source</th>
                 <th className="py-3 px-4">Controlling Director</th>
                 <th className="py-3 px-4">Payment Method & Ref</th>
+                <th className="py-3 px-3 text-center">Docs</th>
                 <th className="py-3 px-4 text-right">Amount (BDT)</th>
                 <th className="py-3 px-3 text-center">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -753,7 +807,7 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
             <tbody className="divide-y divide-slate-800/80">
               {filteredIncomes.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-500 text-xs">
+                  <td colSpan={11} className="py-8 text-center text-slate-500 text-xs">
                     No income records match your filters.
                   </td>
                 </tr>
@@ -763,6 +817,7 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
                   const isApproved = item.status === 'APPROVED';
                   const isPending = item.status === 'PENDING';
                   const isRejected = item.status === 'REJECTED';
+                  const attachmentCount = item.attachments?.length || 0;
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-800/40 transition">
@@ -819,6 +874,26 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
                         )}
                       </td>
 
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAttachmentEntry(item)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+                            attachmentCount > 0
+                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/80 hover:bg-emerald-900 shadow-xs'
+                              : 'bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:border-slate-600'
+                          }`}
+                          title={
+                            attachmentCount > 0
+                              ? `${attachmentCount} supporting document(s) attached. Click to view/manage.`
+                              : 'No documents attached. Click to attach receipt/voucher.'
+                          }
+                        >
+                          <Paperclip className="w-3 h-3" />
+                          <span>{attachmentCount}</span>
+                        </button>
+                      </td>
+
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400">
                         {formatBDT(item.amount)}
                       </td>
@@ -839,6 +914,15 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
 
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Attachments / Supporting Documents Modal Button */}
+                          <button
+                            onClick={() => setSelectedAttachmentEntry(item)}
+                            title="Supporting Documents & Receipts"
+                            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-emerald-300 rounded transition"
+                          >
+                            <Paperclip className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Print Slip */}
                           {onPrintVoucher && (
                             <button
@@ -917,9 +1001,9 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
 
       {/* Add Income Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in duration-200">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950 shrink-0">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <span>Record New {modalType === 'SALES_DEPOSIT' ? 'Sales Deposit' : 'General Deposit'}</span>
               </h3>
@@ -931,7 +1015,7 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleFormSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
               {formError && (
                 <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1154,6 +1238,85 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+              </div>
+
+              {/* Supporting Document Attachment Upload */}
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Attach Supporting Documents (Receipts / Slips)</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500">Optional</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <select
+                      value={formAttachmentType}
+                      onChange={(e) => setFormAttachmentType(e.target.value as any)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="Receipt">Receipt Voucher</option>
+                      <option value="Cheque">Cheque Leaf</option>
+                      <option value="Bank Slip">Bank Deposit Slip</option>
+                      <option value="Other">Other Document</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={formAttachmentNote}
+                      onChange={(e) => setFormAttachmentNote(e.target.value)}
+                      placeholder="Doc note (e.g. Bank Ref or Counterfoil No)"
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={formAttachmentInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={handleFormFileSelect}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => formAttachmentInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Choose File / Snap Photo</span>
+                  </button>
+                  <span className="text-[11px] text-slate-500">
+                    JPG, PNG, PDF up to 5MB
+                  </span>
+                </div>
+
+                {/* Attached files chips */}
+                {formAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {formAttachments.map((fa, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200"
+                      >
+                        <Paperclip className="w-3 h-3 text-emerald-400" />
+                        <span className="font-medium truncate max-w-[150px]">{fa.name}</span>
+                        <span className="text-[10px] text-slate-400">({(fa.size / 1024).toFixed(0)} KB)</span>
+                        <button
+                          type="button"
+                          onClick={() => removeFormAttachment(idx)}
+                          className="text-slate-400 hover:text-rose-400 ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Submitter Note */}
@@ -1508,6 +1671,26 @@ export const IncomeModule: React.FC<IncomeModuleProps> = ({
         incomes={incomes}
         expenses={storageService.getExpenses()}
       />
+
+      {/* Entry Attachment Preview & Management Modal */}
+      {selectedAttachmentEntry && (
+        <EntryAttachmentModal
+          isOpen={!!selectedAttachmentEntry}
+          onClose={() => setSelectedAttachmentEntry(null)}
+          entryType="INCOME"
+          entryId={selectedAttachmentEntry.id}
+          entryTitle={`${selectedAttachmentEntry.id} - ${selectedAttachmentEntry.category}`}
+          entryAmount={selectedAttachmentEntry.amount}
+          entryDate={selectedAttachmentEntry.date}
+          recipientOrMember={selectedAttachmentEntry.memberName || selectedAttachmentEntry.salesDescription || 'Member Deposit'}
+          attachments={selectedAttachmentEntry.attachments || []}
+          currentUser={currentUser}
+          onAttachmentChanged={() => {
+            const updated = storageService.getIncomes().find((i) => i.id === selectedAttachmentEntry.id);
+            if (updated) setSelectedAttachmentEntry(updated);
+          }}
+        />
+      )}
     </div>
   );
 };

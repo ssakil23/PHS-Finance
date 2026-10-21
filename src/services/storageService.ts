@@ -11,6 +11,7 @@ import {
   EntryStatus,
   TransactionTier,
   ExpenseEntry,
+  EntryAttachment,
   AuditLog,
   ChatMessage,
   ElectionPoll,
@@ -38,6 +39,9 @@ import {
   RecordShareTransferInput,
   MemberNotification,
   NotificationType,
+  SharePenaltyRecord,
+  ImposePenaltyInput,
+  PenaltyImpositionType,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -115,7 +119,79 @@ const STORAGE_KEYS = {
   LOCAL_SNAPSHOTS: 'phs_finance_system_snapshots_v1',
   SHARE_TRANSFERS: 'phs_finance_share_transfers_v1',
   NOTIFICATIONS: 'phs_finance_member_notifications_v1',
+  PENALTIES: 'phs_finance_penalties_v1',
+  PENALTY_LIST_PUBLIC: 'phs_finance_penalty_list_public_v1',
 };
+
+export const INITIAL_PENALTIES: SharePenaltyRecord[] = [
+  {
+    id: 'PEN-2026-001',
+    memberId: 'PHSM-014',
+    memberName: 'Farhana Yasmin',
+    shareNumber: 14,
+    controllingDirectorKey: 'matin',
+    controllingDirectorName: 'M. A. Matin (President)',
+    impositionType: 'MANUAL_FIXED',
+    penaltyAmount: 2500,
+    dueBaseAmount: 50000,
+    reason: 'Late payment of Phase 1 Infrastructure Installment (15 days overdue)',
+    category: 'Late Installment Surcharge',
+    imposedBy: 'ADMIN-001',
+    imposedByName: 'M. A. Matin (President & System Admin)',
+    imposedByRole: 'SYSTEM_ADMIN',
+    imposedAt: '2026-02-10T10:30:00.000Z',
+    fiscalYear: '2026',
+    status: 'IMPOSED',
+    incomeEntryId: 'DEP-PEN-2026-001',
+    isDeductedFromDeposit: true,
+    notes: 'Imposed per EC Resolution EC-RES-2026-018 on late installment overdue',
+  },
+  {
+    id: 'PEN-2026-002',
+    memberId: 'PHSM-042',
+    memberName: 'Md. Mahfuzur Rahman',
+    shareNumber: 42,
+    controllingDirectorKey: 'hasan',
+    controllingDirectorName: 'Engr. Mahmudul Hasan',
+    impositionType: 'PERCENTAGE_DUE',
+    percentageRate: 5,
+    dueBaseAmount: 60000,
+    penaltyAmount: 3000,
+    reason: 'Late payment penalty (5% on overdue balance of ৳60,000 for Land Development)',
+    category: 'Delayed Due Surcharge',
+    imposedBy: 'ADMIN-001',
+    imposedByName: 'M. A. Matin (President & System Admin)',
+    imposedByRole: 'SYSTEM_ADMIN',
+    imposedAt: '2026-02-18T14:15:00.000Z',
+    fiscalYear: '2026',
+    status: 'IMPOSED',
+    incomeEntryId: 'DEP-PEN-2026-002',
+    isDeductedFromDeposit: true,
+    notes: 'Calculated as 5% of unpaid ৳60,000 land development call',
+  },
+  {
+    id: 'PEN-2026-003',
+    memberId: 'PHSM-088',
+    memberName: 'Tanvir Ahmed',
+    shareNumber: 88,
+    controllingDirectorKey: 'kamal',
+    controllingDirectorName: 'Mostafa Kamal',
+    impositionType: 'MANUAL_FIXED',
+    penaltyAmount: 1500,
+    dueBaseAmount: 30000,
+    reason: 'Late payment surcharge on Electrical Substation Fund installment',
+    category: 'Late Utility Contribution',
+    imposedBy: 'ADMIN-001',
+    imposedByName: 'M. A. Matin (President & System Admin)',
+    imposedByRole: 'SYSTEM_ADMIN',
+    imposedAt: '2026-03-01T11:00:00.000Z',
+    fiscalYear: '2026',
+    status: 'IMPOSED',
+    incomeEntryId: 'DEP-PEN-2026-003',
+    isDeductedFromDeposit: true,
+    notes: 'Overdue utility fund deposit penalty per EC circular',
+  },
+];
 
 export const INITIAL_NOTIFICATIONS: MemberNotification[] = [
   {
@@ -1748,6 +1824,85 @@ class StorageService {
     const incomes = this.getIncomes().filter((i) => i.id !== id);
     localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
     this.logAudit(currentUser, 'HARD_DELETE', 'INCOME', id, `Permanently purged deposit record ${id}`);
+    this.notify();
+  }
+
+  // --- Income Attachments (Vouchers, Receipts, Bank Slips) ---
+  public addIncomeAttachment(
+    incomeId: string,
+    attachment: Omit<EntryAttachment, 'id' | 'uploadedAt'>,
+    currentUser: User
+  ): EntryAttachment {
+    const incomes = this.getIncomes();
+    const index = incomes.findIndex((i) => i.id === incomeId);
+    if (index === -1) {
+      throw new Error(`Income entry ${incomeId} not found.`);
+    }
+
+    const newAttachment: EntryAttachment = {
+      ...attachment,
+      id: `ATT-INC-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: currentUser.username || currentUser.id,
+      uploadedByName: currentUser.name,
+    };
+
+    const entry = incomes[index];
+    const existingAttachments = entry.attachments || [];
+    entry.attachments = [...existingAttachments, newAttachment];
+    entry.updatedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'INCOME',
+      incomeId,
+      `Uploaded supporting document "${newAttachment.name}" (${newAttachment.documentType || 'Receipt'}, ${(newAttachment.size / 1024).toFixed(1)} KB) for deposit ${incomeId}`
+    );
+
+    this.notify();
+    return newAttachment;
+  }
+
+  public removeIncomeAttachment(
+    incomeId: string,
+    attachmentId: string,
+    currentUser: User
+  ): void {
+    const incomes = this.getIncomes();
+    const index = incomes.findIndex((i) => i.id === incomeId);
+    if (index === -1) {
+      throw new Error(`Income entry ${incomeId} not found.`);
+    }
+
+    const entry = incomes[index];
+    const targetAtt = (entry.attachments || []).find((a) => a.id === attachmentId);
+    if (!targetAtt) {
+      throw new Error(`Attachment ${attachmentId} not found on income entry ${incomeId}.`);
+    }
+
+    // Permission check
+    const isUploader = targetAtt.uploadedBy === currentUser.username || targetAtt.uploadedBy === currentUser.id;
+    const isOfficial = this.isOfficialOrAdmin(currentUser);
+    if (!isOfficial && !isUploader) {
+      throw new Error('Access Denied: You do not have permission to remove this document attachment.');
+    }
+
+    entry.attachments = (entry.attachments || []).filter((a) => a.id !== attachmentId);
+    entry.updatedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+
+    this.logAudit(
+      currentUser,
+      'DELETE',
+      'INCOME',
+      incomeId,
+      `Removed document attachment "${targetAtt.name}" from deposit ${incomeId}`
+    );
+
     this.notify();
   }
 
@@ -3715,6 +3870,85 @@ class StorageService {
     this.notify();
   }
 
+  // --- Expense Attachments (Vouchers, Receipts, Invoices, Memos) ---
+  public addExpenseAttachment(
+    expenseId: string,
+    attachment: Omit<EntryAttachment, 'id' | 'uploadedAt'>,
+    currentUser: User
+  ): EntryAttachment {
+    const expenses = this.getExpenses();
+    const index = expenses.findIndex((e) => e.id === expenseId);
+    if (index === -1) {
+      throw new Error(`Expense entry ${expenseId} not found.`);
+    }
+
+    const newAttachment: EntryAttachment = {
+      ...attachment,
+      id: `ATT-EXP-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: currentUser.username || currentUser.id,
+      uploadedByName: currentUser.name,
+    };
+
+    const entry = expenses[index];
+    const existingAttachments = entry.attachments || [];
+    entry.attachments = [...existingAttachments, newAttachment];
+    entry.updatedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'EXPENSE',
+      expenseId,
+      `Uploaded supporting document "${newAttachment.name}" (${newAttachment.documentType || 'Voucher'}, ${(newAttachment.size / 1024).toFixed(1)} KB) for expense ${expenseId}`
+    );
+
+    this.notify();
+    return newAttachment;
+  }
+
+  public removeExpenseAttachment(
+    expenseId: string,
+    attachmentId: string,
+    currentUser: User
+  ): void {
+    const expenses = this.getExpenses();
+    const index = expenses.findIndex((e) => e.id === expenseId);
+    if (index === -1) {
+      throw new Error(`Expense entry ${expenseId} not found.`);
+    }
+
+    const entry = expenses[index];
+    const targetAtt = (entry.attachments || []).find((a) => a.id === attachmentId);
+    if (!targetAtt) {
+      throw new Error(`Attachment ${attachmentId} not found on expense entry ${expenseId}.`);
+    }
+
+    // Permission check
+    const isUploader = targetAtt.uploadedBy === currentUser.username || targetAtt.uploadedBy === currentUser.id;
+    const isOfficial = this.isOfficialOrAdmin(currentUser);
+    if (!isOfficial && !isUploader) {
+      throw new Error('Access Denied: You do not have permission to remove this document attachment.');
+    }
+
+    entry.attachments = (entry.attachments || []).filter((a) => a.id !== attachmentId);
+    entry.updatedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+
+    this.logAudit(
+      currentUser,
+      'DELETE',
+      'EXPENSE',
+      expenseId,
+      `Removed document attachment "${targetAtt.name}" from expense ${expenseId}`
+    );
+
+    this.notify();
+  }
+
   // --- Executive Committee & Member Promotion ---
   public getExecutiveCommittee(): ExecutiveCommittee {
     try {
@@ -5168,6 +5402,245 @@ Prottasha Housing Society Executive Committee`;
       alert.memberId,
       `Overdue alert ${alertId} for ${alert.memberName} marked as resolved`
     );
+    this.notify();
+    return true;
+  }
+
+  // --- Shareholder Penalty Management & Deposit Deduction Engine ---
+
+  public getPenalties(): SharePenaltyRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PENALTIES);
+      if (!data) {
+        localStorage.setItem(STORAGE_KEYS.PENALTIES, JSON.stringify(INITIAL_PENALTIES));
+        return INITIAL_PENALTIES;
+      }
+      return JSON.parse(data);
+    } catch {
+      return INITIAL_PENALTIES;
+    }
+  }
+
+  public getPenaltiesForMember(memberIdOrShareNumber: string | number): SharePenaltyRecord[] {
+    const penalties = this.getPenalties();
+    const idStr = String(memberIdOrShareNumber).toLowerCase();
+    return penalties.filter(
+      (p) =>
+        p.memberId.toLowerCase() === idStr ||
+        String(p.shareNumber) === idStr
+    );
+  }
+
+  public isPenaltyListPublic(): boolean {
+    try {
+      const val = localStorage.getItem(STORAGE_KEYS.PENALTY_LIST_PUBLIC);
+      if (val === null) return true; // Default visible to all share owners
+      return JSON.parse(val);
+    } catch {
+      return true;
+    }
+  }
+
+  public setPenaltyListPublic(visible: boolean, currentUser: User): boolean {
+    const isAdmin =
+      currentUser.role === 'SYSTEM_ADMIN' ||
+      currentUser.role === 'DELEGATED_ADMIN' ||
+      currentUser.isDelegatedAdmin;
+
+    if (!isAdmin) {
+      throw new Error('Unauthorized: Only System Admin or Delegated Admin can modify penalty registry public visibility.');
+    }
+
+    localStorage.setItem(STORAGE_KEYS.PENALTY_LIST_PUBLIC, JSON.stringify(visible));
+
+    this.logAudit(
+      currentUser,
+      'PENALTY_VISIBILITY',
+      'SYSTEM_CONFIG',
+      'PENALTY_REGISTRY_VISIBILITY',
+      `Penalty paid list public visibility set to: ${visible ? 'VISIBLE TO ALL SHARE OWNERS' : 'RESTRICTED TO EC ADMIN ONLY'}`
+    );
+
+    this.notify();
+    return visible;
+  }
+
+  public imposePenalty(input: ImposePenaltyInput, currentUser: User): SharePenaltyRecord {
+    const isAdmin =
+      currentUser.role === 'SYSTEM_ADMIN' ||
+      currentUser.role === 'DELEGATED_ADMIN' ||
+      currentUser.isDelegatedAdmin;
+
+    if (!isAdmin) {
+      throw new Error('Unauthorized: System Admin (or Delegated Admin authorized by System Admin) can impose penalties.');
+    }
+
+    if (!input.penaltyAmount || input.penaltyAmount <= 0) {
+      throw new Error('Invalid penalty amount: Penalty must be greater than 0 BDT.');
+    }
+
+    if (!input.reason || input.reason.trim().length === 0) {
+      throw new Error('Penalty reason is required (e.g., late payment of installment).');
+    }
+
+    const member =
+      this.getMemberById(input.memberId) ||
+      this.getMembers().find((m) => String(m.shareNumber) === String(input.memberId));
+
+    if (!member) {
+      throw new Error(`Target Share Owner (${input.memberId}) not found in 144 shares registry.`);
+    }
+
+    const penalties = this.getPenalties();
+    const penaltyId = `PEN-2026-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
+    const nowIso = new Date().toISOString();
+    const todayDate = nowIso.split('T')[0];
+
+    // Double-entry accounting:
+    // 1. Penalty is treated as System Income too (credited to society income ledger)
+    const incomeEntryId = `DEP-PEN-${Date.now().toString(36).toUpperCase()}`;
+    const penaltyIncome: IncomeEntry = {
+      id: incomeEntryId,
+      type: 'GENERAL_DEPOSIT',
+      amount: input.penaltyAmount,
+      category: 'Late Payment Penalty Surcharge',
+      date: todayDate,
+      time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      tier: 'Tier-1',
+      shareOwnerId: member.id,
+      memberName: member.name,
+      controllingDirector: member.controllingDirectorName,
+      shareNumber: member.shareNumber,
+      paymentMethod: input.paymentMethod || 'Cash',
+      referenceNumber: `PEN-${member.id}-${Date.now().toString(36).toUpperCase()}`,
+      remarks: `System Income (Late Penalty): Imposed on ${member.name} (${member.id}, Share #${member.shareNumber}) for ${input.reason}. Auto-deducted from shareholder deposits.`,
+      submitterId: currentUser.id,
+      submitterName: currentUser.name,
+      submitterRole: currentUser.role,
+      status: 'APPROVED',
+      approvedBy: currentUser.id,
+      approvedByName: currentUser.name,
+      approvedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    // Save income entry
+    const incomes = this.getIncomes();
+    incomes.unshift(penaltyIncome);
+    localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+
+    // 2. Penalty record auto-deducted from member deposits
+    const newPenalty: SharePenaltyRecord = {
+      id: penaltyId,
+      memberId: member.id,
+      memberName: member.name,
+      shareNumber: member.shareNumber,
+      controllingDirectorKey: member.controllingDirectorKey,
+      controllingDirectorName: member.controllingDirectorName,
+      impositionType: input.impositionType,
+      penaltyAmount: input.penaltyAmount,
+      percentageRate: input.percentageRate,
+      dueBaseAmount: input.dueBaseAmount,
+      reason: input.reason.trim(),
+      category: input.category || 'Late Payment Penalty',
+      imposedBy: currentUser.id,
+      imposedByName: currentUser.name,
+      imposedByRole: currentUser.role,
+      imposedAt: nowIso,
+      fiscalYear: new Date().getFullYear().toString(),
+      status: 'IMPOSED',
+      incomeEntryId: incomeEntryId,
+      isDeductedFromDeposit: true,
+      notes: input.notes,
+    };
+
+    penalties.unshift(newPenalty);
+    localStorage.setItem(STORAGE_KEYS.PENALTIES, JSON.stringify(penalties));
+
+    // 3. Dispatch automated notification to the share owner
+    this.addNotification({
+      memberId: member.id,
+      title: '⚠️ Penalty Surcharge Imposed',
+      message: `A late payment penalty of ${formatBDT(input.penaltyAmount)} has been imposed (${input.reason}). This amount is treated as society income and auto-deducted from your total deposits (visible in Red on your statement).`,
+      type: 'STATEMENT_UPDATED',
+      amountBDT: input.penaltyAmount,
+      referenceId: penaltyId,
+      linkTab: 'member_statement',
+    });
+
+    // 4. Log Audit Entry
+    this.logAudit(
+      currentUser,
+      'IMPOSE_PENALTY',
+      'PENALTY',
+      penaltyId,
+      `Imposed ${input.impositionType === 'PERCENTAGE_DUE' ? `${input.percentageRate}% due penalty` : 'fixed penalty'} of ${formatBDT(input.penaltyAmount)} on ${member.name} (${member.id}, Share #${member.shareNumber}) for "${input.reason}". Auto-deducted from deposits & credited to system income.`
+    );
+
+    this.notify();
+    return newPenalty;
+  }
+
+  public waivePenalty(penaltyId: string, currentUser: User, waiveReason: string): boolean {
+    const isAdmin =
+      currentUser.role === 'SYSTEM_ADMIN' ||
+      currentUser.role === 'DELEGATED_ADMIN' ||
+      currentUser.isDelegatedAdmin;
+
+    if (!isAdmin) {
+      throw new Error('Unauthorized: Only System Admin or Delegated Admin can waive penalties.');
+    }
+
+    const penalties = this.getPenalties();
+    const penalty = penalties.find((p) => p.id === penaltyId);
+    if (!penalty) {
+      throw new Error(`Penalty record ${penaltyId} not found.`);
+    }
+
+    if (penalty.status === 'WAIVED') {
+      return true;
+    }
+
+    const nowIso = new Date().toISOString();
+    penalty.status = 'WAIVED';
+    penalty.waivedAt = nowIso;
+    penalty.waivedBy = currentUser.id;
+    penalty.waivedByName = currentUser.name;
+    penalty.waiveReason = waiveReason || 'Waived by administrative decision';
+
+    localStorage.setItem(STORAGE_KEYS.PENALTIES, JSON.stringify(penalties));
+
+    // Soft-delete or reverse linked system income entry
+    if (penalty.incomeEntryId) {
+      const incomes = this.getIncomes();
+      const linkedInc = incomes.find((i) => i.id === penalty.incomeEntryId);
+      if (linkedInc) {
+        linkedInc.isSoftDeleted = true;
+        linkedInc.updatedAt = nowIso;
+        linkedInc.remarks = `[WAIVED PENALTY] ${linkedInc.remarks} - Waived by ${currentUser.name}: ${waiveReason}`;
+        localStorage.setItem(STORAGE_KEYS.INCOMES, JSON.stringify(incomes));
+      }
+    }
+
+    this.addNotification({
+      memberId: penalty.memberId,
+      title: '✅ Penalty Waived & Deposits Restored',
+      message: `The previously imposed penalty of ${formatBDT(penalty.penaltyAmount)} has been officially waived (${waiveReason}). Your total deposit balance has been restored.`,
+      type: 'STATEMENT_UPDATED',
+      amountBDT: penalty.penaltyAmount,
+      referenceId: penalty.id,
+      linkTab: 'member_statement',
+    });
+
+    this.logAudit(
+      currentUser,
+      'WAIVE_PENALTY',
+      'PENALTY',
+      penalty.id,
+      `Waived penalty of ${formatBDT(penalty.penaltyAmount)} for ${penalty.memberName} (${penalty.memberId}, Share #${penalty.shareNumber}). Reason: ${waiveReason}`
+    );
+
     this.notify();
     return true;
   }

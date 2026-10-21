@@ -112,7 +112,7 @@ export default function App() {
   const isMember = currentUser.role === 'MEMBER';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen w-full max-w-full bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white overflow-x-hidden">
       {/* Forced Password Change Checkpoint for First-Time Login */}
       {isPasswordChangeRequired && (
         <ForcePasswordChangeModal currentUser={currentUser} />
@@ -126,7 +126,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 overflow-x-hidden">
         {/* Render Tab based on RBAC */}
         {activeTab === 'dashboard' && !isMember && (
           <ExecutiveDashboard

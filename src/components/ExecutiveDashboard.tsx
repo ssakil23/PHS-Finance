@@ -37,6 +37,9 @@ import { TierComparisonMatrix } from './TierComparisonMatrix';
 import { AnnualBudgetVarianceSubModule } from './AnnualBudgetVarianceSubModule';
 import { BoardPresentationPDFModal } from './BoardPresentationPDFModal';
 import { MultiYearComparisonSection } from './MultiYearComparisonSection';
+import { MonthlyExpenseCategoryChart } from './MonthlyExpenseCategoryChart';
+import { ImposePenaltyModal } from './ImposePenaltyModal';
+import { PenaltyRegistryModal } from './PenaltyRegistryModal';
 
 interface ExecutiveDashboardProps {
   incomes: IncomeEntry[];
@@ -53,9 +56,11 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   onNavigateTab,
   members: propMembers,
 }) => {
-  const [dashboardSubTab, setDashboardSubTab] = useState<'OVERVIEW' | 'TRENDS' | 'MULTI_YEAR' | 'BUDGET_VARIANCE' | 'EXPENSE_FORECAST'>('OVERVIEW');
+  const [dashboardSubTab, setDashboardSubTab] = useState<'OVERVIEW' | 'TRENDS' | 'MULTI_YEAR' | 'BUDGET_VARIANCE' | 'EXPENSE_FORECAST' | 'EXPENSE_BREAKDOWN'>('OVERVIEW');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('2026');
   const [showBoardPDFModal, setShowBoardPDFModal] = useState<boolean>(false);
+  const [showPenaltyRegistryModal, setShowPenaltyRegistryModal] = useState<boolean>(false);
+  const [showImposePenaltyModal, setShowImposePenaltyModal] = useState<boolean>(false);
 
   // Discover all distinct fiscal years across income and expense datasets
   const availableYears = useMemo(() => {
@@ -218,9 +223,42 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             <Sparkles className="w-4 h-4 text-amber-300" />
             <span>Predictive Expense Forecast</span>
           </button>
+
+          <button
+            onClick={() => setDashboardSubTab('EXPENSE_BREAKDOWN')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
+              dashboardSubTab === 'EXPENSE_BREAKDOWN'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-teal-300" />
+            <span>Expense Category Breakdown</span>
+          </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Penalty Registry Button */}
+          <button
+            onClick={() => setShowPenaltyRegistryModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900/80 text-rose-200 border border-rose-800/80 rounded-xl text-xs font-semibold shadow transition shrink-0 cursor-pointer"
+            title="View society penalty registry, late surcharge deductions, and toggle public visibility"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+            <span>Penalty Registry</span>
+          </button>
+
+          {canApprove && (
+            <button
+              onClick={() => setShowImposePenaltyModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold shadow transition shrink-0 cursor-pointer"
+              title="Impose late payment penalty on shareholder"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-white" />
+              <span>Impose Penalty</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowBoardPDFModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow transition shrink-0"
@@ -257,6 +295,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       ) : dashboardSubTab === 'EXPENSE_FORECAST' ? (
         <div className="space-y-6 animate-in fade-in duration-150">
           <ExpenseForecastChart expenses={filteredExpenses} incomes={filteredIncomes} />
+        </div>
+      ) : dashboardSubTab === 'EXPENSE_BREAKDOWN' ? (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <MonthlyExpenseCategoryChart
+            expenses={expenses}
+            currentFiscalYear={selectedFiscalYear === 'ALL' ? '2026' : selectedFiscalYear}
+            availableYears={availableYears}
+            onFiscalYearChange={(yr) => setSelectedFiscalYear(yr)}
+          />
         </div>
       ) : (
         <>
@@ -437,6 +484,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Recharts Monthly Expense Breakdown by Category for the Current/Selected Fiscal Year */}
+      <MonthlyExpenseCategoryChart
+        expenses={expenses}
+        currentFiscalYear={selectedFiscalYear === 'ALL' ? '2026' : selectedFiscalYear}
+        availableYears={availableYears}
+        onFiscalYearChange={(yr) => setSelectedFiscalYear(yr)}
+      />
 
       {/* Recharts Monthly Income vs Expense Growth Trends Section */}
       <MonthlyGrowthTrendsSection incomes={filteredIncomes} expenses={filteredExpenses} />
@@ -630,6 +685,26 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         members={members}
         currentUser={currentUser}
       />
+
+      {/* Shareholder Penalty Registry Modal */}
+      <PenaltyRegistryModal
+        isOpen={showPenaltyRegistryModal}
+        onClose={() => setShowPenaltyRegistryModal(false)}
+        currentUser={currentUser || { id: 'GUEST', name: 'Guest', role: 'MEMBER', username: 'guest' }}
+        onOpenImposeModal={() => setShowImposePenaltyModal(true)}
+      />
+
+      {/* Impose Penalty Modal (System Admin / Delegated Admin) */}
+      {currentUser && (
+        <ImposePenaltyModal
+          isOpen={showImposePenaltyModal}
+          onClose={() => setShowImposePenaltyModal(false)}
+          currentUser={currentUser}
+          members={members}
+          incomes={incomes}
+          expenses={expenses}
+        />
+      )}
     </div>
   );
 };

@@ -1,11 +1,22 @@
 @import "tailwindcss";
 
 @layer base {
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    min-height: 100%;
+  }
+
   body {
     background-color: #020617;
     color: #f8fafc;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
+}
+
+/* Ensure smooth touch scrolling on iOS & mobile devices */
+.overflow-x-auto, .overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom scrollbars */

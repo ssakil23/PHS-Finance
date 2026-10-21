@@ -801,7 +801,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
               <tr>
                 <th className="py-3 px-4">Deposit ID</th>
@@ -912,7 +912,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[780px] text-left text-xs">
               <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[11px]">
                 <tr>
                   <th className="py-2.5 px-4">Transfer Ref</th>
@@ -1270,7 +1270,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
 
                         {/* Itemized Vouchers with Date, Subcategory, Payee, 1/144 share */}
                         <div className="overflow-x-auto rounded-lg border border-slate-800">
-                          <table className="w-full text-left text-xs">
+                          <table className="w-full min-w-[720px] text-left text-xs">
                             <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[10px]">
                               <tr>
                                 <th className="py-2.5 px-3">Date</th>
@@ -1325,7 +1325,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
         {/* TAB 2: CHRONOLOGICAL EXPENSE VOUCHER LEDGER (ALL VOUCHERS WITH DATE) */}
         {expenseActiveTab === 'ALL_VOUCHERS' && (
           <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[850px] text-left text-xs">
               <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="py-3 px-3">Date</th>
@@ -1403,9 +1403,9 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
       {/* MODAL 0: SEND STATEMENT UPDATE NOTIFICATION ALERT                         */}
       {/* ========================================================================= */}
       {showReconcileModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <BellRing className="w-5 h-5 text-cyan-400" />
                 <h3 className="text-base font-bold text-white">
@@ -1420,7 +1420,7 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Target Member:</span>

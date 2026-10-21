@@ -512,7 +512,7 @@ export const MultiYearComparisonSection: React.FC<MultiYearComparisonSectionProp
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="w-full min-w-[780px] text-xs text-left">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[11px] font-semibold border-b border-slate-800 tracking-wider">
               <tr>
                 <th className="py-3 px-4">Financial Indicator</th>

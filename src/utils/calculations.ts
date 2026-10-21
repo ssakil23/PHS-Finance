@@ -3,7 +3,7 @@
  * High precision, unit-safe financial formula implementations for Prottasha Housing Society.
  */
 
-import { IncomeEntry, ExpenseEntry, DirectorInfo, Member } from '../types';
+import { IncomeEntry, ExpenseEntry, DirectorInfo, Member, SharePenaltyRecord } from '../types';
 import { TOTAL_SHARES, DIRECTORS, parseShareNumberFromMemberId, getDirectorForShareNumber } from './directors';
 
 export interface DirectorFinancialSummary {
@@ -24,8 +24,10 @@ export interface MemberFinancialSummary {
   controllingDirector: DirectorInfo;
   totalProjectExpense: number;
   memberShareExpense: number; // Total Project Expense / 144
-  memberPersonalDeposit: number; // Total money deposited against this specific Member ID
-  currentBalance: number; // memberPersonalDeposit - memberShareExpense
+  memberPersonalDeposit: number; // Total gross money deposited against this specific Member ID
+  penaltyDeductions?: number; // Total active penalties auto-deducted from member deposits
+  netEffectiveDeposit?: number; // memberPersonalDeposit - (penaltyDeductions || 0)
+  currentBalance: number; // netEffectiveDeposit - memberShareExpense
   status: 'ADVANCE' | 'PAID' | 'DUE';
 }
 
@@ -197,7 +199,8 @@ export function computeDirectorSummaries(
 export function computeMemberSummary(
   member: Member,
   incomes: IncomeEntry[],
-  expenses: ExpenseEntry[]
+  expenses: ExpenseEntry[],
+  penalties?: SharePenaltyRecord[]
 ): MemberFinancialSummary {
   const projectFinancials = computeProjectFinancials(incomes, expenses);
   const totalProjectExpense = projectFinancials.totalProjectExpense;
@@ -205,7 +208,7 @@ export function computeMemberSummary(
   // Member Share Expense = Total Project Expense / 144
   const memberShareExpense = totalProjectExpense / TOTAL_SHARES;
 
-  // Member Personal Deposit = Total money deposited against this specific Member ID
+  // Member Personal Deposit = Total money deposited against this specific Member ID (Gross)
   const memberDeposits = incomes
     .filter(
       (inc) =>
@@ -216,7 +219,19 @@ export function computeMemberSummary(
     )
     .reduce((sum, inc) => sum + inc.amount, 0);
 
-  const currentBalance = memberDeposits - memberShareExpense;
+  // Active penalties auto-deducted from member deposits
+  const memberPenalties = penalties
+    ? penalties.filter(
+        (p) =>
+          p.status === 'IMPOSED' &&
+          (p.memberId === member.id || p.shareNumber === member.shareNumber)
+      )
+    : [];
+  const penaltyDeductions = memberPenalties.reduce((sum, p) => sum + p.penaltyAmount, 0);
+  const netEffectiveDeposit = Math.max(0, memberDeposits - penaltyDeductions);
+
+  // Current balance accounts for net effective deposit after penalty deductions
+  const currentBalance = netEffectiveDeposit - memberShareExpense;
 
   let status: 'ADVANCE' | 'PAID' | 'DUE' = 'PAID';
   if (currentBalance > 0.01) {
@@ -235,6 +250,8 @@ export function computeMemberSummary(
     totalProjectExpense,
     memberShareExpense,
     memberPersonalDeposit: memberDeposits,
+    penaltyDeductions,
+    netEffectiveDeposit,
     currentBalance,
     status,
   };
@@ -246,9 +263,10 @@ export function computeMemberSummary(
 export function computeAllMemberSummaries(
   members: Member[],
   incomes: IncomeEntry[],
-  expenses: ExpenseEntry[]
+  expenses: ExpenseEntry[],
+  penalties?: SharePenaltyRecord[]
 ): MemberFinancialSummary[] {
-  return members.map((member) => computeMemberSummary(member, incomes, expenses));
+  return members.map((member) => computeMemberSummary(member, incomes, expenses, penalties));
 }
 
 export interface ExpenseSubCategoryBreakdown {

@@ -742,7 +742,7 @@ export const MonthlyGrowthTrendsSection: React.FC<MonthlyGrowthTrendsSectionProp
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[780px] text-left text-xs">
             <thead className="bg-slate-900/90 text-slate-400 font-semibold border-b border-slate-800">
               <tr>
                 <th className="py-2.5 px-4">Month</th>
