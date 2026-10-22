@@ -42,7 +42,10 @@ import {
   Member,
   User as UserType,
   OverduePaymentAlert,
+  SharePenaltyRecord,
 } from '../types';
+import { ImposePenaltyModal } from './ImposePenaltyModal';
+import { PenaltyRegistryModal } from './PenaltyRegistryModal';
 import {
   computeMemberSummary,
   computeProjectFinancials,
@@ -98,6 +101,8 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
   const [showOverdueMonitorModal, setShowOverdueMonitorModal] = useState(false);
   const [showSingleAlertModal, setShowSingleAlertModal] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [showPenaltyRegistryModal, setShowPenaltyRegistryModal] = useState(false);
+  const [showImposePenaltyModal, setShowImposePenaltyModal] = useState(false);
   const [reconcileCustomNote, setReconcileCustomNote] = useState('');
   const [customAlertNote, setCustomAlertNote] = useState('');
   const [isDispatching, setIsDispatching] = useState(false);
@@ -116,7 +121,24 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
   const activeId = isMember ? loggedMemberId : selectedMemberId;
   const currentMember = members.find((m) => m.id === activeId) || members[0];
 
-  const summary = computeMemberSummary(currentMember, incomes, expenses);
+  // Shareholder Penalties Data & Deductions
+  const penalties = useMemo(() => {
+    return storageService.getPenalties();
+  }, [actionFeedback, incomes]);
+
+  const memberPenalties = useMemo(() => {
+    return storageService.getPenaltiesForMember(currentMember.id);
+  }, [currentMember.id, actionFeedback, penalties]);
+
+  const activeMemberPenalties = useMemo(() => {
+    return memberPenalties.filter((p) => p.status === 'IMPOSED');
+  }, [memberPenalties]);
+
+  const totalPenaltyDeductions = useMemo(() => {
+    return activeMemberPenalties.reduce((sum, p) => sum + p.penaltyAmount, 0);
+  }, [activeMemberPenalties]);
+
+  const summary = computeMemberSummary(currentMember, incomes, expenses, penalties);
   const financials = computeProjectFinancials(incomes, expenses);
 
   // All deposits for this member
@@ -145,8 +167,8 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
 
   // Scan all 144 shares for collective Overdue Monitor
   const allSummaries = useMemo(() => {
-    return computeAllMemberSummaries(members, incomes, expenses);
-  }, [members, incomes, expenses]);
+    return computeAllMemberSummaries(members, incomes, expenses, penalties);
+  }, [members, incomes, expenses, penalties]);
 
   const allOverdueAccounts = useMemo(() => {
     return allSummaries
@@ -517,6 +539,27 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
             )}
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* Penalty Paid List Button */}
+              <button
+                onClick={() => setShowPenaltyRegistryModal(true)}
+                title="View society-wide penalty paid list & surcharge deductions"
+                className="px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900/80 text-rose-200 border border-rose-800/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition cursor-pointer"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Penalty Paid List</span>
+              </button>
+
+              {canManageAlerts && (
+                <button
+                  onClick={() => setShowImposePenaltyModal(true)}
+                  title="Impose late payment penalty on this shareholder"
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition cursor-pointer"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-white" />
+                  <span>Impose Penalty</span>
+                </button>
+              )}
+
               {/* Board Summary PDF Report */}
               <button
                 onClick={() => setShowBoardPDFModal(true)}
@@ -703,15 +746,15 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
           </div>
         </div>
 
-        {/* Middle & Right: The 4 Core Financial Metrics */}
+        {/* Middle & Right: Core Financial Metrics with Red Penalty Deductions */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Metric 1: Member Personal Deposit */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+            {/* Metric 1: Member Gross Personal Deposit */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
               <div className="text-xs text-slate-400 font-medium mb-1">
-                Total Personal Deposits (Joma)
+                Gross Deposits (Joma)
               </div>
-              <div className="text-2xl font-bold font-mono text-emerald-400">
+              <div className="text-xl font-bold font-mono text-emerald-400">
                 {formatBDT(summary.memberPersonalDeposit)}
               </div>
               <div className="text-[11px] text-slate-500 mt-2">
@@ -719,24 +762,85 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
               </div>
             </div>
 
-            {/* Metric 2: Member Share Expense */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-              <div className="text-xs text-slate-400 font-medium mb-1">
-                Share Expense Quota (Khorch)
+            {/* Metric 2: Penalty Deductions - DISPLAYED IN RED COLOUR */}
+            <div className="bg-slate-900 border border-rose-900/70 rounded-xl p-4 shadow-sm relative overflow-hidden">
+              <div className="text-xs text-rose-300 font-semibold mb-1 flex items-center justify-between">
+                <span>Penalty Deductions</span>
+                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                  Auto-Deducted
+                </span>
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-200">
-                {formatBDT(summary.memberShareExpense)}
+              <div className="text-xl font-bold font-mono text-rose-500">
+                {summary.penaltyDeductions && summary.penaltyDeductions > 0 ? (
+                  `-${formatBDT(summary.penaltyDeductions)}`
+                ) : (
+                  <span className="text-slate-500">৳ 0</span>
+                )}
               </div>
-              <div className="text-[11px] text-slate-500 mt-2">
-                Strict formula: Total Project Expense / 144
+              <div className="text-[11px] text-rose-400/90 mt-2 font-medium">
+                {summary.penaltyDeductions && summary.penaltyDeductions > 0
+                  ? 'Auto-deducted from total deposits'
+                  : 'Zero penalty deductions recorded'}
               </div>
             </div>
 
-            {/* Metric 3: Current Net Balance */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            {/* Metric 3: Net Effective Deposit */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
               <div className="text-xs text-slate-400 font-medium mb-1">
-                Current Net Balance (Joma − Khorch)
+                Net Effective Deposit
               </div>
+              <div className="text-xl font-bold font-mono text-teal-300">
+                {formatBDT(summary.netEffectiveDeposit ?? summary.memberPersonalDeposit)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-2">
+                Gross Joma − Penalty Deductions
+              </div>
+            </div>
+
+            {/* Metric 4: Member Share Expense */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+              <div className="text-xs text-slate-400 font-medium mb-1">
+                Share Quota (1/144th)
+              </div>
+              <div className="text-xl font-bold font-mono text-slate-200">
+                {formatBDT(summary.memberShareExpense)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-2">
+                Equal share of total project expenses
+              </div>
+            </div>
+          </div>
+
+          {/* Current Net Balance Banner */}
+          <div
+            className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              isAdvance
+                ? 'bg-emerald-950/40 border-emerald-800/60'
+                : 'bg-rose-950/40 border-rose-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
+                  isAdvance
+                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/40'
+                    : 'bg-rose-600/20 text-rose-400 border border-rose-500/40'
+                }`}
+              >
+                {isAdvance ? '✓' : '!'}
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-200">
+                  Current Net Balance (Net Effective Joma − Khorch)
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {isAdvance
+                    ? 'Your account has verified surplus advance capital credited.'
+                    : 'Your 1/144th share quota currently has an outstanding deficit.'}
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
               <div
                 className={`text-2xl font-bold font-mono ${
                   isAdvance ? 'text-teal-400' : 'text-rose-400'
@@ -744,33 +848,162 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
               >
                 {formatBDT(summary.currentBalance)}
               </div>
-              <div className="mt-2">
-                <span
-                  className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    isAdvance
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                  }`}
-                >
-                  {isAdvance ? 'Surplus Advance' : 'Pending Dues Payable'}
-                </span>
-              </div>
+              <span
+                className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mt-1 ${
+                  isAdvance
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                }`}
+              >
+                {isAdvance ? 'Surplus Advance' : 'Pending Dues Payable'}
+              </span>
             </div>
           </div>
 
           {/* Macro Project Reference Strip */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="text-slate-400">Global Reference: </span>
-              <span>Total Project Expense: <strong className="text-white font-mono">{formatBDT(financials.totalProjectExpense)}</strong></span>
+              <span>
+                Total Project Expense: <strong className="text-white font-mono">{formatBDT(financials.totalProjectExpense)}</strong>
+              </span>
               <span className="text-slate-500 mx-2">|</span>
-              <span>Divided by: <strong className="text-emerald-400 font-mono">144 Shares</strong></span>
+              <span>
+                Divided by: <strong className="text-emerald-400 font-mono">144 Shares</strong>
+              </span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono">
               Share Quota = {formatBDT(financials.perShareExpense)}
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* DEDICATED SECTION: SHAREHOLDER PENALTY DEDUCTIONS (VISIBLE IN RED)        */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900 border border-rose-900/60 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-900/40">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-rose-950 border border-rose-800 text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-bold text-white">Late Payment Penalties & Deductions</h4>
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  Auto-Deducted from Deposits
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Late payment surcharges imposed by administration. Treated as Society Income and auto-deducted from your personal deposit ledger.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowPenaltyRegistryModal(true)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+              <span>Society Penalty Paid List</span>
+            </button>
+
+            {canManageAlerts && (
+              <button
+                onClick={() => setShowImposePenaltyModal(true)}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow transition cursor-pointer"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Impose Penalty</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Penalty Summary Callout */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-rose-900/40 text-xs">
+          <div>
+            <div className="text-[11px] text-slate-400">Total Penalty Surcharges Imposed</div>
+            <div className="text-lg font-bold font-mono text-rose-500 mt-0.5">
+              {totalPenaltyDeductions > 0 ? `-${formatBDT(totalPenaltyDeductions)}` : '৳ 0'}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-slate-400">Central Escrow Treatment</div>
+            <div className="text-sm font-semibold text-emerald-400 mt-1 flex items-center gap-1">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Credited to System Income</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-slate-400">Ledger Deduction Effect</div>
+            <div className="text-sm font-semibold text-rose-400 mt-1 font-mono">
+              Net Deposit = {formatBDT(summary.netEffectiveDeposit ?? summary.memberPersonalDeposit)}
+            </div>
+          </div>
+        </div>
+
+        {/* Itemized Penalties Table */}
+        {memberPenalties.length === 0 ? (
+          <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800 text-center text-xs text-slate-400">
+            No late payment penalties or surcharges have been imposed on Share #{currentMember.shareNumber} ({currentMember.name}). All installment obligations are in compliance.
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-rose-900/30 rounded-xl bg-slate-950/60">
+            <table className="w-full text-left text-xs min-w-[650px]">
+              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-rose-900/40">
+                <tr>
+                  <th className="py-2.5 px-3">Penalty ID</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Reason / Description</th>
+                  <th className="py-2.5 px-3 text-right">Deducted Amount</th>
+                  <th className="py-2.5 px-3">Imposition Mode</th>
+                  <th className="py-2.5 px-3">Imposed By</th>
+                  <th className="py-2.5 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono">
+                {memberPenalties.map((pen) => {
+                  const isWaived = pen.status === 'WAIVED';
+                  return (
+                    <tr key={pen.id} className="hover:bg-slate-900/40 transition">
+                      <td className="py-2.5 px-3 text-slate-400">{pen.id}</td>
+                      <td className="py-2.5 px-3 text-slate-300 font-sans">{pen.imposedAt.split('T')[0]}</td>
+                      <td className="py-2.5 px-3 font-sans text-slate-200">
+                        <div>{pen.reason}</div>
+                        {pen.notes && <div className="text-[10px] text-slate-400 italic">{pen.notes}</div>}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold">
+                        <span className={isWaived ? 'line-through text-slate-500' : 'text-rose-500 font-bold'}>
+                          -{formatBDT(pen.penaltyAmount)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-[11px] font-sans text-slate-300">
+                        {pen.impositionType === 'PERCENTAGE_DUE' ? `${pen.percentageRate}% of Due` : 'Manual Fixed'}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans text-slate-400 text-[11px]">
+                        {pen.imposedByName}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans">
+                        {isWaived ? (
+                          <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded">
+                            Waived
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-rose-400 bg-rose-950/60 border border-rose-800/60 px-1.5 py-0.5 rounded">
+                            Auto-Deducted
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Member Personal Deposit History (Joma Breakdown) */}
@@ -1788,6 +2021,31 @@ export const MemberStatementView: React.FC<MemberStatementViewProps> = ({
         members={members}
         currentUser={currentUser}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: CENTRAL SOCIETY PENALTY REGISTRY (PUBLIC / ADMIN)                */}
+      {/* ========================================================================= */}
+      <PenaltyRegistryModal
+        isOpen={showPenaltyRegistryModal}
+        onClose={() => setShowPenaltyRegistryModal(false)}
+        currentUser={currentUser || { id: 'GUEST', name: 'Guest', role: 'MEMBER', username: 'guest' }}
+        onOpenImposeModal={() => setShowImposePenaltyModal(true)}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: IMPOSE SHAREHOLDER PENALTY (ADMIN / DELEGATED ADMIN)             */}
+      {/* ========================================================================= */}
+      {currentUser && (
+        <ImposePenaltyModal
+          isOpen={showImposePenaltyModal}
+          onClose={() => setShowImposePenaltyModal(false)}
+          currentUser={currentUser}
+          members={members}
+          incomes={incomes}
+          expenses={expenses}
+          preselectedMemberId={currentMember.id}
+        />
+      )}
     </div>
   );
 };

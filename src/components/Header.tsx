@@ -500,10 +500,11 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <button
                   onClick={() => authService.logout()}
-                  title="Sign out"
-                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 rounded transition-colors"
+                  title="Sign out of current session"
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/40 hover:bg-rose-900/80 border border-rose-800/60 rounded-lg transition-colors cursor-pointer"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Logout</span>
                 </button>
               </div>
             )}
@@ -542,6 +543,20 @@ export const Header: React.FC<HeaderProps> = ({
               {item.label}
             </button>
           ))}
+
+          {/* Explicit Leave Session / Logout option in Mobile View */}
+          <div className="pt-3 mt-3 border-t border-slate-800/80">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                authService.logout();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-rose-200 bg-rose-950/70 hover:bg-rose-900 border border-rose-800 transition cursor-pointer shadow-md"
+            >
+              <LogOut className="w-4 h-4 text-rose-400" />
+              <span>Leave Current Session (Log Out)</span>
+            </button>
+          </div>
         </div>
       )}
 

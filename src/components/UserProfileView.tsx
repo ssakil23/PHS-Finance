@@ -43,6 +43,7 @@ import {
   Shield,
   RefreshCw,
   Upload,
+  LogOut,
 } from 'lucide-react';
 import { User, Member, ProfileUpdateRequest, OfficialUser } from '../types';
 import { storageService } from '../services/storageService';
@@ -962,6 +963,15 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ currentUser, m
                 <span>System Officials & Passwords</span>
               </button>
             )}
+
+            <button
+              onClick={() => authService.logout()}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 transition flex items-center gap-1.5 shadow cursor-pointer ml-auto"
+              title="Leave current session and return to login"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span>Log Out</span>
+            </button>
           </div>
         </div>
       </div>
