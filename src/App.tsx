@@ -24,6 +24,7 @@ import { PrintStatementModal } from './components/PrintStatementModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { MemberFinancialSummary, computeProjectFinancials } from './utils/calculations';
 import { DirectorsCalcScreen } from './screens/admin/DirectorsCalcScreen';
+import { SessionInactivityWatchdog } from './components/SessionInactivityWatchdog';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
@@ -251,6 +252,9 @@ export default function App() {
       />
       {/* Offline Status & Instant Sync Indicator */}
       <OfflineIndicator currentUser={currentUser} />
+
+      {/* Security Watchdog: Session Inactivity Protection */}
+      <SessionInactivityWatchdog currentUser={currentUser} />
     </div>
   );
 }

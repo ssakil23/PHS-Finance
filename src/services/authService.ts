@@ -7,6 +7,7 @@
 import { User, UserRole } from '../types';
 import { storageService } from './storageService';
 import { DIRECTORS, formatMemberId, parseShareNumberFromMemberId, getDirectorForShareNumber } from '../utils/directors';
+import { securityEngine } from '../utils/security';
 
 const AUTH_STORAGE_KEY = 'phs_finance_auth_user_v1';
 
@@ -210,6 +211,15 @@ class AuthService {
       };
     }
 
+    // Anti-Hacking & Brute-Force Shield: Check rate-limiting cooldown
+    const lockout = securityEngine.getLockoutStatus(username);
+    if (lockout.isLocked) {
+      return {
+        success: false,
+        message: `BRUTE-FORCE SHIELD ACTIVE: Too many failed password attempts (${lockout.attempts}/5). Access is temporarily frozen for ${lockout.remainingSeconds} seconds to protect this account from dictionary attacks.`,
+      };
+    }
+
     // Passwords check: user-specific password, system default password set by System Admin, or root password
     const hasCustom = storageService.hasCustomPassword(username);
     const storedPass = storageService.getUserPassword(username);
@@ -220,23 +230,6 @@ class AuthService {
     if (hasCustom) {
       // User has set a custom personal password. The old default password CANNOT open the account anymore!
       isPassValid = password === storedPass;
-      if (!isPassValid) {
-        if (
-          password === systemDefault ||
-          password === '12345679' ||
-          password === 'Sarah@14#2014'
-        ) {
-          return {
-            success: false,
-            message:
-              'Invalid password. You have previously set a personal password for this account. The old default password is no longer accepted. Please enter your new personal password.',
-          };
-        }
-        return {
-          success: false,
-          message: 'Invalid password. Please enter the new personal password you set for this account.',
-        };
-      }
     } else {
       // User has not set a personal password yet (initial default password or reset by admin)
       isPassValid =
@@ -247,14 +240,42 @@ class AuthService {
           username.toUpperCase() === 'PHSM-001' ||
           username === '1') &&
           password === 'Sarah@14#2014');
+    }
 
-      if (!isPassValid) {
+    if (!isPassValid) {
+      const failRecord = securityEngine.recordFailedLogin(username);
+      const attemptsLeft = Math.max(0, 5 - failRecord.attempts);
+
+      storageService.logAudit(
+        { id: 'ANONYMOUS', username, name: username, role: 'MEMBER' },
+        'LOGIN',
+        'USER',
+        username,
+        `Security Alert: Failed password submission for "${username}". (${failRecord.attempts}/5 failed attempts recorded).`
+      );
+
+      if (failRecord.isLocked) {
         return {
           success: false,
-          message: `Invalid password. (Initial system default password is: ${systemDefault})`,
+          message: `SECURITY LOCKOUT ENGAGED: 5 consecutive incorrect attempts detected. System has temporarily locked login attempts for ${failRecord.remainingSeconds} seconds to prevent unauthorized brute-force hacking.`,
         };
       }
+
+      if (hasCustom) {
+        return {
+          success: false,
+          message: `Invalid password. Please enter your personal password. (${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} remaining before security lockout).`,
+        };
+      }
+
+      return {
+        success: false,
+        message: `Invalid password. (Initial system default: ${systemDefault}). (${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} remaining before security lockout).`,
+      };
     }
+
+    // Password is valid - clear any recorded failed attempts
+    securityEngine.clearFailedAttempts(username);
 
     const lowerUser = username.toLowerCase();
     const upperUser = username.toUpperCase();

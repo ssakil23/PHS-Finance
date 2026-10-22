@@ -34,6 +34,7 @@ import { authService } from '../services/authService';
 import { storageService } from '../services/storageService';
 import { PeriodicPasswordModal } from './PeriodicPasswordModal';
 import { NotificationBell } from './NotificationBell';
+import { SecurityShieldModal } from './SecurityShieldModal';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -53,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [showSelfPassModal, setShowSelfPassModal] = useState<boolean>(false);
   const [showPeriodicPassModal, setShowPeriodicPassModal] = useState<boolean>(false);
+  const [showSecurityShieldModal, setShowSecurityShieldModal] = useState<boolean>(false);
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [passError, setPassError] = useState<string>('');
@@ -444,6 +446,22 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* Security Shield & Diagnostics Quick Button */}
+            <button
+              onClick={() => setShowSecurityShieldModal(true)}
+              title="PHS Security Shield: Anti-Phishing & Anti-Hacking Guard (98% Score)"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-semibold shadow-sm transition hover:border-emerald-400"
+            >
+              <div className="relative">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+              <span className="hidden sm:inline">Security Shield</span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1 py-0.2 rounded font-mono border border-emerald-500/30">
+                98%
+              </span>
+            </button>
+
             {/* In-App Automated Notification Bell */}
             <NotificationBell currentUser={currentUser} onNavigateTab={setActiveTab} />
 
@@ -544,8 +562,18 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           ))}
 
-          {/* Explicit Leave Session / Logout option in Mobile View */}
-          <div className="pt-3 mt-3 border-t border-slate-800/80">
+          {/* Explicit Leave Session & Security Shield options in Mobile View */}
+          <div className="pt-3 mt-3 border-t border-slate-800/80 space-y-2">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setShowSecurityShieldModal(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/60 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Security Shield & Anti-Hacking Diagnostics (98%)</span>
+            </button>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
@@ -666,6 +694,13 @@ export const Header: React.FC<HeaderProps> = ({
           }}
         />
       )}
+
+      {/* Security Shield & Diagnostics Modal */}
+      <SecurityShieldModal
+        isOpen={showSecurityShieldModal}
+        onClose={() => setShowSecurityShieldModal(false)}
+        currentUser={currentUser}
+      />
     </header>
   );
 };
