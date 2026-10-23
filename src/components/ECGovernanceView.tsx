@@ -21,6 +21,7 @@ import { ExecutiveCommittee, ElectionPoll, User, Member, PromotedECMember } from
 import { formatBDT } from '../utils/calculations';
 import { storageService } from '../services/storageService';
 import { TOTAL_SHARES } from '../utils/directors';
+import { MeetingScheduler } from './MeetingScheduler';
 
 interface ECGovernanceViewProps {
   currentUser: User | null;
@@ -33,6 +34,7 @@ export const ECGovernanceView: React.FC<ECGovernanceViewProps> = ({
 }) => {
   const [ec, setEc] = useState<ExecutiveCommittee>(storageService.getExecutiveCommittee());
   const [poll, setPoll] = useState<ElectionPoll>(storageService.getElectionPoll());
+  const [governanceSubTab, setGovernanceSubTab] = useState<'MEETINGS' | 'COMMITTEE' | 'ELECTION'>('MEETINGS');
 
   // Editing honorariums (Admin only)
   const [isEditingHonorariums, setIsEditingHonorariums] = useState(false);
@@ -219,8 +221,61 @@ export const ECGovernanceView: React.FC<ECGovernanceViewProps> = ({
         </div>
       )}
 
-      {/* EC Leadership Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Governance Sub-Navigation Tab Controller */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 flex flex-wrap items-center gap-2 shadow-md">
+        <button
+          onClick={() => setGovernanceSubTab('MEETINGS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            governanceSubTab === 'MEETINGS'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Calendar className="w-4 h-4 text-emerald-400" />
+          <span>Meeting Scheduler & Attendance</span>
+          <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
+            Active
+          </span>
+        </button>
+
+        <button
+          onClick={() => setGovernanceSubTab('COMMITTEE')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            governanceSubTab === 'COMMITTEE'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Award className="w-4 h-4 text-amber-400" />
+          <span>EC Leadership & Honorariums</span>
+        </button>
+
+        <button
+          onClick={() => setGovernanceSubTab('ELECTION')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            governanceSubTab === 'ELECTION'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Vote className="w-4 h-4 text-sky-400" />
+          <span>Democratic Elections & Voting</span>
+          <span className="px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800 text-[10px]">
+            {voterTurnoutPct.toFixed(0)}% Turnout
+          </span>
+        </button>
+      </div>
+
+      {/* 1. Meeting Scheduler Sub-Module */}
+      {governanceSubTab === 'MEETINGS' && (
+        <MeetingScheduler currentUser={currentUser} members={members} ec={ec} />
+      )}
+
+      {/* 2. EC Leadership & Honorariums Sub-Module */}
+      {governanceSubTab === 'COMMITTEE' && (
+        <>
+          {/* EC Leadership Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* President */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
@@ -447,8 +502,11 @@ export const ECGovernanceView: React.FC<ECGovernanceViewProps> = ({
           </div>
         </form>
       )}
+        </>
+      )}
 
-      {/* Live EC Ballot Election Station */}
+      {/* 3. Live EC Ballot Election Sub-Module */}
+      {governanceSubTab === 'ELECTION' && (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
           <div>
@@ -666,6 +724,7 @@ export const ECGovernanceView: React.FC<ECGovernanceViewProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* System Admin Promotion Modal */}
       {showPromoteModal && (

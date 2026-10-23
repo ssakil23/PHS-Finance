@@ -42,6 +42,14 @@ import {
   SharePenaltyRecord,
   ImposePenaltyInput,
   PenaltyImpositionType,
+  MeetingRecord,
+  MeetingType,
+  MeetingStatus,
+  AttendanceStatus,
+  RSVPStatus,
+  MeetingAttendee,
+  MeetingAgendaItem,
+  CreateMeetingInput,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -121,7 +129,228 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'phs_finance_member_notifications_v1',
   PENALTIES: 'phs_finance_penalties_v1',
   PENALTY_LIST_PUBLIC: 'phs_finance_penalty_list_public_v1',
+  MEETINGS: 'phs_finance_meetings_v1',
 };
+
+export const INITIAL_MEETINGS: MeetingRecord[] = [
+  {
+    id: 'MTG-2026-001',
+    title: '14th Special General Meeting (SGM): Master Plan & Phase-2 Land Allocation',
+    meetingType: 'SGM',
+    date: '2026-10-26',
+    startTime: '10:30 AM',
+    endTime: '01:30 PM',
+    location: 'Society Registered Secretariat Conference Hall, Sector 14, Uttara, Dhaka & Virtual Room',
+    virtualLink: 'https://meet.google.com/phs-sgm-2026',
+    chairperson: 'Saif Ahmed Sakil (President & System Admin)',
+    targetScope: 'ALL_SHARE_OWNERS',
+    selectedMemberIds: [],
+    agenda: [
+      {
+        id: 'AGD-001',
+        itemNumber: 1,
+        title: 'Confirmation of Minutes of the 13th General Assembly',
+        description: 'Review and ratification of minutes and previous resolutions.',
+        presenter: 'Mohammad Jahangir Alam (General Secretary)',
+        allocatedMinutes: 20,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-002',
+        itemNumber: 2,
+        title: 'Sector 14 Land Infrastructure, Earth Compaction & Boundary Wall Report',
+        description: 'Physical progress report by Site Planning & Development Committee.',
+        presenter: 'M Omar Faruque Molla (Vice President)',
+        allocatedMinutes: 40,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-003',
+        itemNumber: 3,
+        title: 'Financial Audit Report & FY 2026 Expense Ledger Review',
+        description: 'Presentation of society audited deposits, bank balances, and expenditure.',
+        presenter: 'Sirajul Islam (Treasurer)',
+        allocatedMinutes: 35,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-004',
+        itemNumber: 4,
+        title: 'Shareholder Installment Schedules & Late Payment Deductions',
+        description: 'Discussion on timely deposit compliance and penalty deduction policy.',
+        presenter: 'Saif Ahmed Sakil (President)',
+        allocatedMinutes: 30,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-005',
+        itemNumber: 5,
+        title: 'Open Floor Q&A and Miscellaneous with permission of the Chair',
+        description: 'Direct interactive inquiry from 144 registered shareholders.',
+        presenter: 'All Share Owners',
+        allocatedMinutes: 25,
+        status: 'PENDING',
+      },
+    ],
+    attendees: {
+      'PHSM-001': {
+        memberId: 'PHSM-001',
+        name: 'Saif Ahmed Sakil',
+        shareNumber: 1,
+        isECMember: true,
+        designation: 'President',
+        rsvpStatus: 'ATTENDING',
+        rsvpRespondedAt: '2026-10-21T10:00:00.000Z',
+        attendanceStatus: 'PRESENT',
+      },
+      'PHSM-002': {
+        memberId: 'PHSM-002',
+        name: 'Mohammad Jahangir Alam',
+        shareNumber: 2,
+        isECMember: true,
+        designation: 'General Secretary',
+        rsvpStatus: 'ATTENDING',
+        rsvpRespondedAt: '2026-10-21T11:15:00.000Z',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-049': {
+        memberId: 'PHSM-049',
+        name: 'M Omar Faruque Molla',
+        shareNumber: 49,
+        isECMember: true,
+        designation: 'Vice President',
+        rsvpStatus: 'ATTENDING',
+        rsvpRespondedAt: '2026-10-21T11:30:00.000Z',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-007': {
+        memberId: 'PHSM-007',
+        name: 'S. M. Mahbubur Rahman',
+        shareNumber: 7,
+        isECMember: false,
+        rsvpStatus: 'ATTENDING',
+        rsvpRespondedAt: '2026-10-22T09:20:00.000Z',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-014': {
+        memberId: 'PHSM-014',
+        name: 'Farhana Yasmin',
+        shareNumber: 14,
+        isECMember: false,
+        rsvpStatus: 'TENTATIVE',
+        rsvpRespondedAt: '2026-10-22T08:45:00.000Z',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-042': {
+        memberId: 'PHSM-042',
+        name: 'Md. Mahfuzur Rahman',
+        shareNumber: 42,
+        isECMember: false,
+        rsvpStatus: 'ATTENDING',
+        rsvpRespondedAt: '2026-10-22T10:10:00.000Z',
+        attendanceStatus: 'PENDING',
+      },
+    },
+    scheduledBy: 'ADMIN-001',
+    scheduledByName: 'Saif Ahmed Sakil (President & System Admin)',
+    scheduledByRole: 'SYSTEM_ADMIN',
+    scheduledAt: '2026-10-20T08:00:00.000Z',
+    status: 'UPCOMING',
+    lastDailyReminderDate: '2026-10-22',
+    dailyReminderCount: 2,
+    isPushNotificationSent: true,
+    enableDailyReminders: true,
+  },
+  {
+    id: 'MTG-2026-002',
+    title: '34th Executive Committee (EC) Strategic Review & Contractor Billing',
+    meetingType: 'EC_MEETING',
+    date: '2026-10-24',
+    startTime: '04:00 PM',
+    endTime: '06:30 PM',
+    location: 'Executive Boardroom, PHS Central Office & Zoom Virtual Room',
+    virtualLink: 'https://zoom.us/j/phs-ec-review',
+    chairperson: 'M Omar Faruque Molla (Vice President) & Saif Ahmed Sakil',
+    targetScope: 'EC_AND_SELECTED_MEMBERS',
+    selectedMemberIds: ['PHSM-007', 'PHSM-014', 'PHSM-042'],
+    agenda: [
+      {
+        id: 'AGD-101',
+        itemNumber: 1,
+        title: 'Review of Contractor Earth Filling Vouchers & Approval for Payment',
+        description: 'Vetting of site development bills submitted for the current billing cycle.',
+        presenter: 'Site Engineer & General Secretary',
+        allocatedMinutes: 30,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-102',
+        itemNumber: 2,
+        title: 'Review of Executive Committee Honorarium Schedule & Appointed Members',
+        description: 'Evaluation of monthly honorarium disbursements and promotions.',
+        presenter: 'Treasurer Sirajul Islam',
+        allocatedMinutes: 25,
+        status: 'PENDING',
+      },
+      {
+        id: 'AGD-103',
+        itemNumber: 3,
+        title: 'Pre-SGM Logistic & Agenda Alignment',
+        description: 'Finalizing resolution drafts for the forthcoming SGM assembly.',
+        presenter: 'Mohammad Jahangir Alam (General Secretary)',
+        allocatedMinutes: 35,
+        status: 'PENDING',
+      },
+    ],
+    attendees: {
+      'PHSM-001': {
+        memberId: 'PHSM-001',
+        name: 'Saif Ahmed Sakil',
+        shareNumber: 1,
+        isECMember: true,
+        designation: 'President',
+        rsvpStatus: 'ATTENDING',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-002': {
+        memberId: 'PHSM-002',
+        name: 'Mohammad Jahangir Alam',
+        shareNumber: 2,
+        isECMember: true,
+        designation: 'General Secretary',
+        rsvpStatus: 'ATTENDING',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-049': {
+        memberId: 'PHSM-049',
+        name: 'M Omar Faruque Molla',
+        shareNumber: 49,
+        isECMember: true,
+        designation: 'Vice President',
+        rsvpStatus: 'ATTENDING',
+        attendanceStatus: 'PENDING',
+      },
+      'PHSM-007': {
+        memberId: 'PHSM-007',
+        name: 'S. M. Mahbubur Rahman',
+        shareNumber: 7,
+        isECMember: false,
+        designation: 'Invited Observer',
+        rsvpStatus: 'ATTENDING',
+        attendanceStatus: 'PENDING',
+      },
+    },
+    scheduledBy: 'PHSM-002',
+    scheduledByName: 'Mohammad Jahangir Alam (General Secretary)',
+    scheduledByRole: 'OFFICIAL',
+    scheduledAt: '2026-10-21T09:00:00.000Z',
+    status: 'UPCOMING',
+    lastDailyReminderDate: '2026-10-22',
+    dailyReminderCount: 1,
+    isPushNotificationSent: true,
+    enableDailyReminders: true,
+  },
+];
 
 export const INITIAL_PENALTIES: SharePenaltyRecord[] = [
   {
@@ -5643,6 +5872,761 @@ Prottasha Housing Society Executive Committee`;
 
     this.notify();
     return true;
+  }
+
+  // =========================================================================
+  // --- Meeting Scheduler, Attendance Tracking & Automated Daily Push Engine ---
+  // =========================================================================
+
+  public getMeetings(): MeetingRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.MEETINGS);
+      if (!data) {
+        localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(INITIAL_MEETINGS));
+        return INITIAL_MEETINGS;
+      }
+      const meetings: MeetingRecord[] = JSON.parse(data);
+      // Sort by date ascending (chronological upcoming first)
+      return meetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } catch {
+      return INITIAL_MEETINGS;
+    }
+  }
+
+  public getMeetingById(meetingId: string): MeetingRecord | undefined {
+    const meetings = this.getMeetings();
+    return meetings.find((m) => m.id === meetingId);
+  }
+
+  /**
+   * Authority Check: Allows President, Vice-President, EC Secretary,
+   * System Admin, and Delegated Admin to set dates, agenda, and track attendance.
+   */
+  public canManageMeetings(currentUser: User | null): boolean {
+    if (!currentUser) return false;
+
+    // 1. Root System Admin & Delegated Admin
+    if (
+      currentUser.role === 'SYSTEM_ADMIN' ||
+      currentUser.role === 'DELEGATED_ADMIN' ||
+      currentUser.isDelegatedAdmin
+    ) {
+      return true;
+    }
+
+    const ec = this.getExecutiveCommittee();
+    const currentMid = (currentUser.memberId || '').toUpperCase();
+    const currentNameLower = (currentUser.name || '').toLowerCase();
+    const currentUsernameLower = (currentUser.username || '').toLowerCase();
+
+    // 2. President (Saif Ahmed Sakil, PHSM-001)
+    const isPresident =
+      currentMid === ec.president.memberId.toUpperCase() ||
+      currentNameLower.includes(ec.president.name.toLowerCase()) ||
+      (currentUser.ecDesignation || '').toLowerCase().includes('president') ||
+      (currentUser.officialDesignation || '').toLowerCase().includes('president');
+    if (isPresident) return true;
+
+    // 3. Vice President (VP) (M Omar Faruque Molla, PHSM-049)
+    const isVP =
+      (ec.vicePresident && currentMid === ec.vicePresident.memberId.toUpperCase()) ||
+      (ec.vicePresident && currentNameLower.includes(ec.vicePresident.name.toLowerCase())) ||
+      (currentUser.ecDesignation || '').toLowerCase().includes('vice president') ||
+      (currentUser.officialDesignation || '').toLowerCase().includes('vice president') ||
+      (currentUser.ecDesignation || '').toLowerCase().includes('vp') ||
+      (currentUser.officialDesignation || '').toLowerCase().includes('vp');
+    if (isVP) return true;
+
+    // 4. EC General Secretary / EC Secretary (Mohammad Jahangir Alam, PHSM-002)
+    const isSecretary =
+      currentMid === ec.generalSecretary.memberId.toUpperCase() ||
+      currentNameLower.includes(ec.generalSecretary.name.toLowerCase()) ||
+      (currentUser.ecDesignation || '').toLowerCase().includes('secretary') ||
+      (currentUser.officialDesignation || '').toLowerCase().includes('secretary');
+    if (isSecretary) return true;
+
+    // 5. Appointed / Promoted EC officers (Joint Secretary, Organizing Secretary, etc.)
+    if (ec.additionalECMembers) {
+      const isAppointedExec = ec.additionalECMembers.some(
+        (m) =>
+          m.memberId.toUpperCase() === currentMid &&
+          (m.designation.toLowerCase().includes('secretary') ||
+            m.designation.toLowerCase().includes('president') ||
+            m.designation.toLowerCase().includes('vice'))
+      );
+      if (isAppointedExec) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Browser Native Web Push Notification trigger (falls back safely)
+   */
+  public triggerWebPushNotification(title: string, body: string, tag?: string): boolean {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return false;
+    }
+
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/icon.svg',
+          badge: '/icon.svg',
+          tag: tag || `phs-mtg-${Date.now()}`,
+        });
+        return true;
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            try {
+              new Notification(title, {
+                body,
+                icon: '/icon.svg',
+                badge: '/icon.svg',
+                tag: tag || `phs-mtg-${Date.now()}`,
+              });
+            } catch {}
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Native Web Push notification error:', e);
+    }
+    return false;
+  }
+
+  /**
+   * Dispatches instant Push and in-app automated notifications to all relevant members
+   */
+  public dispatchMeetingPushAndInApp(
+    meeting: MeetingRecord,
+    currentUser: User,
+    isReminder: boolean = false
+  ): { inAppDispatchedCount: number; webPushTriggered: boolean } {
+    const meetingTypeLabels: Record<MeetingType, string> = {
+      EC_MEETING: 'Executive Committee (EC) Meeting',
+      SGM: 'Special General Meeting (SGM)',
+      AGM: 'Annual General Meeting (AGM)',
+      EMERGENCY_EC: 'Emergency EC Session',
+    };
+
+    const typeLabel = meetingTypeLabels[meeting.meetingType] || 'Official Meeting';
+    const title = isReminder
+      ? `📅 Daily Meeting Reminder: ${meeting.title}`
+      : `📢 New Meeting Scheduled: ${typeLabel}`;
+
+    const message = isReminder
+      ? `Official Reminder from PHS Secretariat: "${meeting.title}" is scheduled on ${meeting.date} at ${meeting.startTime} (${meeting.location}). Please confirm your attendance/RSVP.`
+      : `You are officially convened for "${meeting.title}" on ${meeting.date} at ${meeting.startTime} (${meeting.location}). Chaired by: ${meeting.chairperson}. Please review agenda and confirm RSVP.`;
+
+    let count = 0;
+
+    if (meeting.targetScope === 'ALL_SHARE_OWNERS') {
+      // Broadcast to ALL members
+      this.addNotification({
+        memberId: 'ALL',
+        title,
+        message,
+        type: isReminder ? 'MEETING_REMINDER' : 'MEETING_SCHEDULED',
+        referenceId: meeting.id,
+        linkTab: 'ec_governance',
+      });
+      count = 144;
+    } else {
+      // Send to specific invited attendees
+      const attendeeIds = Object.keys(meeting.attendees);
+      attendeeIds.forEach((mId) => {
+        this.addNotification({
+          memberId: mId,
+          title,
+          message,
+          type: isReminder ? 'MEETING_REMINDER' : 'MEETING_SCHEDULED',
+          referenceId: meeting.id,
+          linkTab: 'ec_governance',
+        });
+        count++;
+      });
+    }
+
+    // Trigger browser Web Push notification
+    const pushTriggered = this.triggerWebPushNotification(title, message, meeting.id);
+
+    return {
+      inAppDispatchedCount: count,
+      webPushTriggered: pushTriggered,
+    };
+  }
+
+  /**
+   * Create a new meeting (President, VP, EC Secretary, Admins)
+   */
+  public createMeeting(input: CreateMeetingInput, currentUser: User): MeetingRecord {
+    if (!this.canManageMeetings(currentUser)) {
+      throw new Error(
+        'Access Denied: Only President, Vice-President, EC Secretary, or System Admin can schedule meetings.'
+      );
+    }
+
+    if (!input.title || !input.title.trim()) {
+      throw new Error('Meeting title is required.');
+    }
+    if (!input.date) {
+      throw new Error('Meeting date is required.');
+    }
+    if (!input.startTime) {
+      throw new Error('Start time is required.');
+    }
+    if (!input.location || !input.location.trim()) {
+      throw new Error('Meeting venue / location is required.');
+    }
+
+    const meetings = this.getMeetings();
+    const count = meetings.length + 1;
+    const year = new Date().getFullYear();
+    const newId = `MTG-${year}-${String(count).padStart(3, '0')}`;
+    const nowIso = new Date().toISOString();
+
+    const ec = this.getExecutiveCommittee();
+    const allMembers = this.getMembers();
+
+    // Build attendees record
+    const attendees: Record<string, MeetingAttendee> = {};
+
+    if (input.targetScope === 'ALL_SHARE_OWNERS') {
+      // SGM / AGM: All 144 registered shareholders are targeted
+      allMembers.forEach((m) => {
+        const isPres = m.id === ec.president.memberId;
+        const isVP = ec.vicePresident && m.id === ec.vicePresident.memberId;
+        const isGS = m.id === ec.generalSecretary.memberId;
+        const isTr = m.id === ec.treasurer.memberId;
+        const isPromoted = ec.additionalECMembers?.some((p) => p.memberId === m.id);
+
+        let des: string | undefined;
+        if (isPres) des = 'President';
+        else if (isVP) des = 'Vice President';
+        else if (isGS) des = 'General Secretary';
+        else if (isTr) des = 'Treasurer';
+        else if (isPromoted) {
+          des = ec.additionalECMembers?.find((p) => p.memberId === m.id)?.designation;
+        }
+
+        attendees[m.id] = {
+          memberId: m.id,
+          name: m.name,
+          shareNumber: m.shareNumber,
+          phone: m.phone,
+          isECMember: Boolean(isPres || isVP || isGS || isTr || isPromoted),
+          designation: des || 'Shareholder',
+          rsvpStatus: 'PENDING',
+          attendanceStatus: 'PENDING',
+        };
+      });
+    } else {
+      // EC Meeting: Executive Committee members + selected invited members
+      // 1. Core EC
+      const ecCore = [
+        { id: ec.president.memberId, name: ec.president.name, des: 'President' },
+        ...(ec.vicePresident
+          ? [{ id: ec.vicePresident.memberId, name: ec.vicePresident.name, des: 'Vice President' }]
+          : []),
+        { id: ec.generalSecretary.memberId, name: ec.generalSecretary.name, des: 'General Secretary' },
+        { id: ec.treasurer.memberId, name: ec.treasurer.name, des: 'Treasurer' },
+      ];
+
+      ecCore.forEach((c) => {
+        const m = allMembers.find((mem) => mem.id === c.id);
+        attendees[c.id] = {
+          memberId: c.id,
+          name: c.name,
+          shareNumber: m?.shareNumber,
+          phone: m?.phone,
+          isECMember: true,
+          designation: c.des,
+          rsvpStatus: 'PENDING',
+          attendanceStatus: 'PENDING',
+        };
+      });
+
+      // 2. Appointed EC Members
+      (ec.additionalECMembers || []).forEach((p) => {
+        const m = allMembers.find((mem) => mem.id === p.memberId);
+        attendees[p.memberId] = {
+          memberId: p.memberId,
+          name: p.name,
+          shareNumber: m?.shareNumber,
+          phone: m?.phone,
+          isECMember: true,
+          designation: p.designation,
+          rsvpStatus: 'PENDING',
+          attendanceStatus: 'PENDING',
+        };
+      });
+
+      // 3. Selected additional members invited
+      (input.selectedMemberIds || []).forEach((mId) => {
+        if (!attendees[mId]) {
+          const m = allMembers.find((mem) => mem.id === mId);
+          if (m) {
+            attendees[mId] = {
+              memberId: m.id,
+              name: m.name,
+              shareNumber: m.shareNumber,
+              phone: m.phone,
+              isECMember: false,
+              designation: 'Invited Member',
+              rsvpStatus: 'PENDING',
+              attendanceStatus: 'PENDING',
+            };
+          }
+        }
+      });
+    }
+
+    // Build agenda with auto IDs
+    const agenda: MeetingAgendaItem[] = input.agenda.map((item, index) => ({
+      id: `AGD-${Date.now().toString(36).toUpperCase()}-${index + 1}`,
+      itemNumber: index + 1,
+      title: item.title.trim(),
+      description: item.description?.trim(),
+      presenter: item.presenter?.trim() || 'Chairperson',
+      allocatedMinutes: item.allocatedMinutes || 15,
+      status: 'PENDING',
+    }));
+
+    const newMeeting: MeetingRecord = {
+      id: newId,
+      title: input.title.trim(),
+      meetingType: input.meetingType,
+      date: input.date,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      location: input.location.trim(),
+      virtualLink: input.virtualLink?.trim(),
+      chairperson:
+        input.chairperson?.trim() ||
+        `${currentUser.name} (${currentUser.role === 'SYSTEM_ADMIN' ? 'President' : 'EC Executive'})`,
+      targetScope: input.targetScope,
+      selectedMemberIds: input.selectedMemberIds || [],
+      agenda,
+      attendees,
+      scheduledBy: currentUser.id,
+      scheduledByName: currentUser.name,
+      scheduledByRole: currentUser.role,
+      scheduledAt: nowIso,
+      status: 'UPCOMING',
+      lastDailyReminderDate: nowIso.split('T')[0],
+      dailyReminderCount: 1,
+      isPushNotificationSent: true,
+      enableDailyReminders: input.enableDailyReminders !== false,
+    };
+
+    meetings.push(newMeeting);
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    // Dispatch instant Push and In-App notifications
+    const dispatchResult = this.dispatchMeetingPushAndInApp(newMeeting, currentUser, false);
+
+    // Audit Log
+    this.logAudit(
+      currentUser,
+      'CREATE',
+      'MEETING',
+      newId,
+      `Scheduled ${input.meetingType} "${newMeeting.title}" for ${newMeeting.date} at ${newMeeting.startTime}. Dispatched instant push & in-app notifications to ${dispatchResult.inAppDispatchedCount} members.`
+    );
+
+    this.notify();
+    return newMeeting;
+  }
+
+  /**
+   * Update existing meeting
+   */
+  public updateMeeting(
+    meetingId: string,
+    updates: Partial<MeetingRecord>,
+    currentUser: User
+  ): MeetingRecord {
+    if (!this.canManageMeetings(currentUser)) {
+      throw new Error('Access Denied: Only authorized EC leadership can edit meetings.');
+    }
+
+    const meetings = this.getMeetings();
+    const index = meetings.findIndex((m) => m.id === meetingId);
+    if (index === -1) {
+      throw new Error(`Meeting ${meetingId} not found.`);
+    }
+
+    const updated = {
+      ...meetings[index],
+      ...updates,
+      id: meetingId, // preserve ID
+    };
+
+    meetings[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'MEETING',
+      meetingId,
+      `Updated meeting details for ${meetingId} ("${updated.title}")`
+    );
+
+    this.notify();
+    return updated;
+  }
+
+  /**
+   * Cancel meeting with reason
+   */
+  public cancelMeeting(meetingId: string, currentUser: User, cancelReason?: string): boolean {
+    if (!this.canManageMeetings(currentUser)) {
+      throw new Error('Access Denied: Only authorized EC leadership can cancel meetings.');
+    }
+
+    const meetings = this.getMeetings();
+    const meeting = meetings.find((m) => m.id === meetingId);
+    if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+
+    meeting.status = 'CANCELLED';
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    // Send cancellation notice
+    this.addNotification({
+      memberId: meeting.targetScope === 'ALL_SHARE_OWNERS' ? 'ALL' : currentUser.memberId || 'ALL',
+      title: `🚫 Meeting Cancelled: ${meeting.title}`,
+      message: `The meeting "${meeting.title}" scheduled for ${meeting.date} has been cancelled by ${currentUser.name}.${
+        cancelReason ? ` Reason: ${cancelReason}` : ''
+      }`,
+      type: 'MEETING_UPDATE',
+      referenceId: meeting.id,
+      linkTab: 'ec_governance',
+    });
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'MEETING',
+      meetingId,
+      `Cancelled meeting ${meetingId} ("${meeting.title}"). Reason: ${cancelReason || 'Administrative cancellation'}`
+    );
+
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Complete meeting with official minutes and resolutions
+   */
+  public completeMeeting(
+    meetingId: string,
+    minutes: string,
+    resolutions: string[],
+    currentUser: User
+  ): boolean {
+    if (!this.canManageMeetings(currentUser)) {
+      throw new Error('Access Denied: Only authorized EC leadership can record minutes and complete meetings.');
+    }
+
+    const meetings = this.getMeetings();
+    const meeting = meetings.find((m) => m.id === meetingId);
+    if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+
+    meeting.status = 'COMPLETED';
+    meeting.minutesOfMeeting = minutes.trim();
+    meeting.officialResolutions = resolutions.filter((r) => r.trim().length > 0);
+
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    // Notify all participants of published minutes
+    this.addNotification({
+      memberId: meeting.targetScope === 'ALL_SHARE_OWNERS' ? 'ALL' : currentUser.memberId || 'ALL',
+      title: `📜 Meeting Minutes & Resolutions Published: ${meeting.title}`,
+      message: `Official minutes of the meeting and ${resolutions.length} ratified resolution(s) have been published by ${currentUser.name}.`,
+      type: 'MEETING_UPDATE',
+      referenceId: meeting.id,
+      linkTab: 'ec_governance',
+    });
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'MEETING',
+      meetingId,
+      `Completed meeting ${meetingId} ("${meeting.title}") with official minutes and ${resolutions.length} resolutions.`
+    );
+
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Track / Mark Attendance for a single member (President / VP / Secretary / Admin)
+   */
+  public recordAttendance(
+    meetingId: string,
+    memberId: string,
+    status: AttendanceStatus,
+    notes?: string,
+    currentUser?: User
+  ): boolean {
+    if (currentUser && !this.canManageMeetings(currentUser)) {
+      throw new Error('Access Denied: Only authorized EC leadership can record member attendance.');
+    }
+
+    const meetings = this.getMeetings();
+    const meeting = meetings.find((m) => m.id === meetingId);
+    if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+
+    const nowIso = new Date().toISOString();
+
+    if (!meeting.attendees[memberId]) {
+      const member = this.getMemberById(memberId);
+      meeting.attendees[memberId] = {
+        memberId,
+        name: member?.name || memberId,
+        shareNumber: member?.shareNumber,
+        isECMember: false,
+        rsvpStatus: 'PENDING',
+        attendanceStatus: status,
+        attendanceMarkedAt: nowIso,
+        attendanceMarkedBy: currentUser?.name || 'EC Directorate',
+        notes,
+      };
+    } else {
+      meeting.attendees[memberId].attendanceStatus = status;
+      meeting.attendees[memberId].attendanceMarkedAt = nowIso;
+      meeting.attendees[memberId].attendanceMarkedBy = currentUser?.name || 'EC Directorate';
+      if (notes !== undefined) {
+        meeting.attendees[memberId].notes = notes;
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    if (currentUser) {
+      this.logAudit(
+        currentUser,
+        'UPDATE',
+        'MEETING',
+        meetingId,
+        `Marked attendance for ${memberId} as ${status} in meeting ${meetingId}`
+      );
+    }
+
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Batch mark attendance for multiple members
+   */
+  public batchRecordAttendance(
+    meetingId: string,
+    attendanceList: Array<{ memberId: string; status: AttendanceStatus; notes?: string }>,
+    currentUser: User
+  ): boolean {
+    if (!this.canManageMeetings(currentUser)) {
+      throw new Error('Access Denied: Only authorized EC leadership can record member attendance.');
+    }
+
+    const meetings = this.getMeetings();
+    const meeting = meetings.find((m) => m.id === meetingId);
+    if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+
+    const nowIso = new Date().toISOString();
+
+    attendanceList.forEach((item) => {
+      if (meeting.attendees[item.memberId]) {
+        meeting.attendees[item.memberId].attendanceStatus = item.status;
+        meeting.attendees[item.memberId].attendanceMarkedAt = nowIso;
+        meeting.attendees[item.memberId].attendanceMarkedBy = currentUser.name;
+        if (item.notes) meeting.attendees[item.memberId].notes = item.notes;
+      } else {
+        const mem = this.getMemberById(item.memberId);
+        meeting.attendees[item.memberId] = {
+          memberId: item.memberId,
+          name: mem?.name || item.memberId,
+          shareNumber: mem?.shareNumber,
+          isECMember: false,
+          rsvpStatus: 'PENDING',
+          attendanceStatus: item.status,
+          attendanceMarkedAt: nowIso,
+          attendanceMarkedBy: currentUser.name,
+          notes: item.notes,
+        };
+      }
+    });
+
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'MEETING',
+      meetingId,
+      `Batch recorded attendance for ${attendanceList.length} members in meeting ${meetingId}`
+    );
+
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Member submits RSVP for a meeting ("Attending", "Cannot Attend", "Tentative")
+   */
+  public submitRSVP(
+    meetingId: string,
+    memberId: string,
+    rsvp: RSVPStatus,
+    currentUser: User
+  ): boolean {
+    const meetings = this.getMeetings();
+    const meeting = meetings.find((m) => m.id === meetingId);
+    if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+
+    const nowIso = new Date().toISOString();
+
+    if (!meeting.attendees[memberId]) {
+      const member = this.getMemberById(memberId);
+      meeting.attendees[memberId] = {
+        memberId,
+        name: member?.name || currentUser.name,
+        shareNumber: member?.shareNumber,
+        isECMember: false,
+        rsvpStatus: rsvp,
+        rsvpRespondedAt: nowIso,
+        attendanceStatus: 'PENDING',
+      };
+    } else {
+      meeting.attendees[memberId].rsvpStatus = rsvp;
+      meeting.attendees[memberId].rsvpRespondedAt = nowIso;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+
+    this.logAudit(
+      currentUser,
+      'UPDATE',
+      'MEETING',
+      meetingId,
+      `${currentUser.name} (${memberId}) submitted RSVP as "${rsvp}" for meeting ${meetingId}`
+    );
+
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Automated Daily Reminder Engine:
+   * Checks upcoming meetings and sends daily Push and In-App reminders everyday until completed!
+   */
+  public checkAndTriggerDailyReminders(currentUser?: User): {
+    triggeredCount: number;
+    meetingsChecked: number;
+    dispatchedMeetings: string[];
+  } {
+    const meetings = this.getMeetings();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(todayStr).getTime();
+
+    let triggeredCount = 0;
+    const dispatchedMeetings: string[] = [];
+
+    meetings.forEach((meeting) => {
+      // Only process meetings that are UPCOMING or IN_PROGRESS and have daily reminders enabled
+      if (meeting.status !== 'UPCOMING' && meeting.status !== 'IN_PROGRESS') {
+        return;
+      }
+      if (meeting.enableDailyReminders === false) {
+        return;
+      }
+
+      const meetingDate = new Date(meeting.date).getTime();
+      const diffTime = meetingDate - todayDate;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // If meeting date is already in the past by > 1 day, don't spam reminders
+      if (diffDays < -1) {
+        return;
+      }
+
+      // Check if reminder was already dispatched today
+      if (meeting.lastDailyReminderDate === todayStr) {
+        return;
+      }
+
+      let reminderTiming = '';
+      if (diffDays === 0) {
+        reminderTiming = `TODAY at ${meeting.startTime}`;
+      } else if (diffDays === 1) {
+        reminderTiming = `TOMORROW (${meeting.date}) at ${meeting.startTime}`;
+      } else if (diffDays > 1) {
+        reminderTiming = `in ${diffDays} days (${meeting.date}) at ${meeting.startTime}`;
+      } else {
+        reminderTiming = `Current Session`;
+      }
+
+      const title = `📅 Daily Meeting Reminder: ${meeting.title}`;
+      const message = `Reminder from PHS Executive Committee: The event is taking place ${reminderTiming} at ${meeting.location}. Venue: ${meeting.location}. Please confirm your attendance/RSVP.`;
+
+      // 1. Dispatch In-App Notification
+      if (meeting.targetScope === 'ALL_SHARE_OWNERS') {
+        this.addNotification({
+          memberId: 'ALL',
+          title,
+          message,
+          type: 'MEETING_REMINDER',
+          referenceId: meeting.id,
+          linkTab: 'ec_governance',
+        });
+      } else {
+        Object.keys(meeting.attendees).forEach((mId) => {
+          this.addNotification({
+            memberId: mId,
+            title,
+            message,
+            type: 'MEETING_REMINDER',
+            referenceId: meeting.id,
+            linkTab: 'ec_governance',
+          });
+        });
+      }
+
+      // 2. Trigger Web Push Notification
+      this.triggerWebPushNotification(title, message, meeting.id);
+
+      // 3. Update meeting reminder metadata
+      meeting.lastDailyReminderDate = todayStr;
+      meeting.dailyReminderCount = (meeting.dailyReminderCount || 0) + 1;
+
+      triggeredCount++;
+      dispatchedMeetings.push(meeting.id);
+    });
+
+    if (triggeredCount > 0) {
+      localStorage.setItem(STORAGE_KEYS.MEETINGS, JSON.stringify(meetings));
+      if (currentUser) {
+        this.logAudit(
+          currentUser,
+          'CREATE',
+          'SYSTEM_CONFIG',
+          'DAILY_MEETING_REMINDERS',
+          `Dispatched automated daily reminders for ${triggeredCount} active meeting(s) (${dispatchedMeetings.join(', ')})`
+        );
+      }
+      this.notify();
+    }
+
+    return {
+      triggeredCount,
+      meetingsChecked: meetings.length,
+      dispatchedMeetings,
+    };
   }
 }
 

@@ -348,7 +348,7 @@ export interface AuditLog {
     | 'WAIVE_PENALTY'
     | 'PENALTY_VISIBILITY'
     | 'LOGIN';
-  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET' | 'SHARE_TRANSFER' | 'PENALTY';
+  entity: 'INCOME' | 'EXPENSE' | 'USER' | 'MEMBER' | 'EC_COMMITTEE' | 'SYSTEM_CONFIG' | 'CHAT' | 'DOCUMENT' | 'QUERY' | 'BUDGET' | 'SHARE_TRANSFER' | 'PENALTY' | 'MEETING';
   entityId: string;
   details: string;
   ipAddress?: string;
@@ -679,7 +679,10 @@ export type NotificationType =
   | 'DEPOSIT_REJECTED'
   | 'STATEMENT_UPDATED'
   | 'PROFILE_UPDATED'
-  | 'SYSTEM_ALERT';
+  | 'SYSTEM_ALERT'
+  | 'MEETING_SCHEDULED'
+  | 'MEETING_REMINDER'
+  | 'MEETING_UPDATE';
 
 export interface MemberNotification {
   id: string;
@@ -688,10 +691,83 @@ export interface MemberNotification {
   message: string;
   type: NotificationType;
   amountBDT?: number;
-  referenceId?: string; // Deposit ID or Transaction reference
+  referenceId?: string; // Deposit ID, Transaction reference, or Meeting ID
   createdAt: string;
   isRead: boolean;
-  linkTab?: string; // Tab to navigate to (e.g. 'member_statement', 'incomes')
+  linkTab?: string; // Tab to navigate to (e.g. 'member_statement', 'incomes', 'ec_governance')
+}
+
+export type MeetingType = 'EC_MEETING' | 'SGM' | 'AGM' | 'EMERGENCY_EC';
+export type MeetingStatus = 'UPCOMING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'EXCUSED' | 'PENDING';
+export type RSVPStatus = 'ATTENDING' | 'UNABLE_TO_ATTEND' | 'TENTATIVE' | 'PENDING';
+
+export interface MeetingAttendee {
+  memberId: string;
+  name: string;
+  shareNumber?: number;
+  phone?: string;
+  isECMember: boolean;
+  designation?: string;
+  rsvpStatus: RSVPStatus;
+  rsvpRespondedAt?: string;
+  attendanceStatus: AttendanceStatus;
+  attendanceMarkedAt?: string;
+  attendanceMarkedBy?: string;
+  notes?: string;
+}
+
+export interface MeetingAgendaItem {
+  id: string;
+  itemNumber: number;
+  title: string;
+  description?: string;
+  presenter?: string;
+  allocatedMinutes?: number;
+  status?: 'PENDING' | 'DISCUSSED' | 'RESOLVED';
+  resolutionNotes?: string;
+}
+
+export interface MeetingRecord {
+  id: string; // e.g. 'MTG-2026-001'
+  title: string;
+  meetingType: MeetingType;
+  date: string; // YYYY-MM-DD
+  startTime: string; // e.g. '10:30 AM'
+  endTime?: string; // e.g. '01:30 PM'
+  location: string;
+  virtualLink?: string;
+  chairperson: string;
+  targetScope: 'ALL_SHARE_OWNERS' | 'EC_AND_SELECTED_MEMBERS';
+  selectedMemberIds?: string[];
+  agenda: MeetingAgendaItem[];
+  attendees: Record<string, MeetingAttendee>;
+  scheduledBy: string;
+  scheduledByName: string;
+  scheduledByRole: string;
+  scheduledAt: string;
+  status: MeetingStatus;
+  minutesOfMeeting?: string;
+  officialResolutions?: string[];
+  lastDailyReminderDate?: string;
+  dailyReminderCount: number;
+  isPushNotificationSent: boolean;
+  enableDailyReminders?: boolean;
+}
+
+export interface CreateMeetingInput {
+  title: string;
+  meetingType: MeetingType;
+  date: string;
+  startTime: string;
+  endTime?: string;
+  location: string;
+  virtualLink?: string;
+  chairperson?: string;
+  targetScope: 'ALL_SHARE_OWNERS' | 'EC_AND_SELECTED_MEMBERS';
+  selectedMemberIds?: string[];
+  agenda: Array<{ title: string; description?: string; presenter?: string; allocatedMinutes?: number }>;
+  enableDailyReminders?: boolean;
 }
 
 export type PenaltyImpositionType = 'MANUAL_FIXED' | 'PERCENTAGE_DUE';

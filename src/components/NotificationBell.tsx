@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Clock,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import { User, MemberNotification, NotificationType } from '../types';
 import { storageService } from '../services/storageService';
@@ -26,7 +27,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   onNavigateTab,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [filter, setFilter] = useState<'ALL' | 'UNREAD' | 'DEPOSITS' | 'STATEMENTS'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'UNREAD' | 'MEETINGS' | 'DEPOSITS' | 'STATEMENTS'>('ALL');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Determine target member ID for filtering
@@ -64,6 +65,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const filteredNotifications = notifications.filter((n) => {
     if (filter === 'UNREAD') return !n.isRead;
+    if (filter === 'MEETINGS') {
+      return (
+        n.type === 'MEETING_SCHEDULED' ||
+        n.type === 'MEETING_REMINDER' ||
+        n.type === 'MEETING_UPDATE'
+      );
+    }
     if (filter === 'DEPOSITS') {
       return (
         n.type === 'DEPOSIT_APPROVED' ||
@@ -93,6 +101,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const getNotificationIcon = (type: NotificationType) => {
     switch (type) {
+      case 'MEETING_SCHEDULED':
+      case 'MEETING_REMINDER':
+      case 'MEETING_UPDATE':
+        return <Calendar className="w-4 h-4 text-emerald-400" />;
       case 'DEPOSIT_APPROVED':
         return <CheckCircle2 className="w-4 h-4 text-emerald-400" />;
       case 'DEPOSIT_RECORDED':
@@ -179,7 +191,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
           {/* Filter Pills */}
           <div className="px-3 py-2 bg-slate-950/40 border-b border-slate-800 flex items-center gap-1.5 text-xs overflow-x-auto">
-            {(['ALL', 'UNREAD', 'DEPOSITS', 'STATEMENTS'] as const).map((mode) => (
+            {(['ALL', 'UNREAD', 'MEETINGS', 'DEPOSITS', 'STATEMENTS'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -192,6 +204,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               >
                 {mode === 'ALL' && 'All'}
                 {mode === 'UNREAD' && `Unread (${unreadCount})`}
+                {mode === 'MEETINGS' && 'Meetings'}
                 {mode === 'DEPOSITS' && 'Deposits'}
                 {mode === 'STATEMENTS' && 'Statements'}
               </button>
