@@ -395,31 +395,8 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Brand Identity */}
-            <div
-              className="flex items-center gap-3 cursor-pointer"
-              onClick={() => setActiveTab(isMember ? 'member_statement' : 'dashboard')}
-            >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-900/30 border border-emerald-400/20">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-1.5">
-                    <span>PHS-Finance</span>
-                  </h1>
-                  <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    v1.0 SRSS
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 hidden sm:block">
-                  Prottasha Housing Society Financial & Director Ledger
-                </p>
-              </div>
-            </div>
-
             {/* Active Module Indicator */}
-            <div className="hidden md:flex items-center gap-2 pl-3 border-l border-slate-800 text-xs">
+            <div className="hidden md:flex items-center gap-2 text-xs">
               <span className="text-slate-500">Active:</span>
               <span className="font-semibold text-emerald-300 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/40 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -430,21 +407,6 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* User Profile & Actions */}
           <div className="flex items-center gap-3">
-            {/* System Admin Periodic Initial Password Quick Button */}
-            {currentUser?.role === 'SYSTEM_ADMIN' && (
-              <button
-                onClick={() => setShowPeriodicPassModal(true)}
-                title="System Admin Authority: Set Initial Password Periodically for All Users"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-950/90 to-amber-900/70 hover:from-amber-900 hover:to-amber-800 text-amber-200 border border-amber-600/70 rounded-lg text-xs font-semibold shadow transition"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden md:inline">Initial Pass:</span>
-                <strong className="font-mono text-white">{storageService.getSystemDefaultPassword()}</strong>
-                {storageService.getPeriodicPasswordStatus().isOverdue && (
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                )}
-              </button>
-            )}
 
             {/* Security Shield & Diagnostics Quick Button */}
             <button
