@@ -215,9 +215,9 @@ export const useDirectorsCalcStore = create<DirectorsCalcState>()(
         // Rule 3: Net Reserve Fund = Module_Income - Total_Operational_Expenses
         const netReserveFund = Math.max(0, moduleGrossIncome - totalOperationalExpenses);
 
-        // Rule 4: Allocation Pools (75% / 25% Split)
+        // Rule 4: Allocation Pools (75% / 25% Split with exact zero-drift balance)
         const foundersPoolTotal = Math.round(netReserveFund * 0.75);
-        const shareholdersPoolTotal = Math.round(netReserveFund * 0.25);
+        const shareholdersPoolTotal = Math.max(0, netReserveFund - foundersPoolTotal);
 
         // Distributions already executed to date
         const totalDistributedToDate = state.distributionHistory.reduce(
@@ -290,7 +290,7 @@ export const useDirectorsCalcStore = create<DirectorsCalcState>()(
           };
         }
 
-        // Payout calculations
+        // Payout calculations with exact sum integrity
         const payoutAmount = Math.round(calc.availableReserveFund * (pct / 100));
         if (payoutAmount <= 0) {
           return {
@@ -300,12 +300,20 @@ export const useDirectorsCalcStore = create<DirectorsCalcState>()(
         }
 
         const foundersTranche = Math.round(payoutAmount * 0.75);
-        const shareholdersTranche = Math.round(payoutAmount * 0.25);
+        const shareholdersTranche = Math.max(0, payoutAmount - foundersTranche);
 
-        // Compute individual Founder payouts based on assigned ratios (100% of founders pool)
-        const founderBreakdown = state.founderRatios.map((f) => {
+        // Compute individual Founder payouts based on assigned ratios (100% of founders pool with remainder reconciliation)
+        let allocatedFounderSum = 0;
+        const founderBreakdown = state.founderRatios.map((f, idx) => {
           const ratio = Number(f.ratioPercentage) || 0;
-          const individualShare = Math.round(foundersTranche * (ratio / 100));
+          let individualShare: number;
+          if (idx === state.founderRatios.length - 1) {
+            // Assign remaining balance to final founder to guarantee sum(founderBreakdown) === foundersTranche exactly
+            individualShare = Math.max(0, foundersTranche - allocatedFounderSum);
+          } else {
+            individualShare = Math.round(foundersTranche * (ratio / 100));
+            allocatedFounderSum += individualShare;
+          }
           return {
             founderId: f.founderId,
             founderName: f.founderName,

@@ -19,6 +19,7 @@ import {
 import { authService } from '../services/authService';
 import { storageService } from '../services/storageService';
 import { securityEngine } from '../utils/security';
+import { InstallAppBanner } from './InstallAppBanner';
 
 export const LoginScreen: React.FC = () => {
   const [selectedIdentifier, setSelectedIdentifier] = useState('');
@@ -323,6 +324,9 @@ export const LoginScreen: React.FC = () => {
           Prottasha Housing Society Ltd. • 144 Share Capital Structure • Security Shield Active
         </p>
       </div>
+
+      {/* PWA In-App Install Prompt Banner */}
+      <InstallAppBanner />
     </div>
   );
 };

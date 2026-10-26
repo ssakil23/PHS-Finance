@@ -25,6 +25,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { MemberFinancialSummary, computeProjectFinancials } from './utils/calculations';
 import { DirectorsCalcScreen } from './screens/admin/DirectorsCalcScreen';
 import { SessionInactivityWatchdog } from './components/SessionInactivityWatchdog';
+import { InstallAppBanner } from './components/InstallAppBanner';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
@@ -255,6 +256,9 @@ export default function App() {
 
       {/* Security Watchdog: Session Inactivity Protection */}
       <SessionInactivityWatchdog currentUser={currentUser} />
+
+      {/* PWA In-App Install Prompt Banner */}
+      <InstallAppBanner />
     </div>
   );
 }

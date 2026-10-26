@@ -67,6 +67,28 @@ export function formatBDT(amount: number | undefined | null, useSymbol: boolean 
 }
 
 /**
+ * Sanitizes and safely converts any input value to a valid finite number.
+ * Eliminates NaN, null, and infinite edge-cases from financial calculations.
+ */
+export function toSafeNumber(val: unknown, fallback: number = 0): number {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'number') {
+    return isNaN(val) || !isFinite(val) ? fallback : val;
+  }
+  const parsed = parseFloat(String(val).replace(/,/g, '').trim());
+  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed;
+}
+
+/**
+ * Sanitizes input and enforces a non-negative constraint for monetary amounts.
+ */
+export function toSafePositiveNumber(val: unknown, fallback: number = 0): number {
+  const safe = toSafeNumber(val, fallback);
+  return Math.max(0, safe);
+}
+
+
+/**
  * Computes overall project financial metrics from active, approved records
  */
 export function computeProjectFinancials(

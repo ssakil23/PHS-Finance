@@ -230,11 +230,21 @@ export const DirectorsCalcScreen: React.FC<DirectorsCalcScreenProps> = ({
     const safePct = Math.min(70, Math.max(20, installmentPct));
     const total = Math.round(calc.availableReserveFund * (safePct / 100));
     const founders = Math.round(total * 0.75);
-    const shareholders = Math.round(total * 0.25);
-    const breakdown = founderRatios.map((f) => ({
-      ...f,
-      amountBDT: Math.round(founders * (f.ratioPercentage / 100)),
-    }));
+    const shareholders = Math.max(0, total - founders);
+    let allocated = 0;
+    const breakdown = founderRatios.map((f, idx) => {
+      let amountBDT: number;
+      if (idx === founderRatios.length - 1) {
+        amountBDT = Math.max(0, founders - allocated);
+      } else {
+        amountBDT = Math.round(founders * (f.ratioPercentage / 100));
+        allocated += amountBDT;
+      }
+      return {
+        ...f,
+        amountBDT,
+      };
+    });
     return { total, founders, shareholders, breakdown };
   }, [calc.availableReserveFund, installmentPct, founderRatios]);
 
