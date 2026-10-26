@@ -58,10 +58,12 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
         <div className="p-8 bg-white text-slate-900 print:p-0 print:m-0" id="printable-voucher-content">
           {/* Header Letterhead */}
           <div className="text-center border-b-2 border-slate-800 pb-4 mb-6">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold">
-                PHS
-              </div>
+            <div className="flex items-center justify-center gap-3 mb-1.5">
+              <img
+                src="/assets/aistudio/transparent-logo_f17eb575.svg"
+                alt="Prottasha Housing Society"
+                className="w-12 h-12 object-contain"
+              />
               <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
                 Prottasha Housing Society Ltd.
               </h1>

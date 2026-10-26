@@ -112,15 +112,12 @@ export const InstallAppBanner: React.FC<InstallAppBannerProps> = ({
           <div className="relative flex items-start gap-3.5">
             {/* App Icon Monogram Badge */}
             <div className="relative shrink-0">
-              <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-slate-900 border border-emerald-400/40 p-0.5 shadow-lg flex items-center justify-center text-white">
-                <div className="w-full h-full rounded-[10px] bg-slate-950/70 flex flex-col items-center justify-center">
-                  <span className="font-black text-xs md:text-sm tracking-wider text-emerald-300 font-mono">
-                    PHS
-                  </span>
-                  <span className="text-[7px] text-slate-400 font-semibold uppercase tracking-tighter">
-                    Finance
-                  </span>
-                </div>
+              <div className="w-12 h-12 rounded-xl bg-slate-950 border border-emerald-400/50 p-1 shadow-lg flex items-center justify-center">
+                <img
+                  src="/assets/aistudio/transparent-logo_f17eb575.svg"
+                  alt="Prottasha Housing Society"
+                  className="w-full h-full object-contain filter drop-shadow"
+                />
               </div>
               <span className="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-emerald-500 text-slate-950 border border-slate-900 shadow">
                 {isDesktop ? (

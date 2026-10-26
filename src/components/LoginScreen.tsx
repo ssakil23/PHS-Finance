@@ -120,16 +120,22 @@ export const LoginScreen: React.FC = () => {
         </div>
 
         {/* Brand Header */}
-        <div className="text-center space-y-1.5">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-950/80 border border-emerald-400/30">
-            <Building2 className="w-7 h-7 text-white" />
+        <div className="text-center space-y-2.5">
+          <div className="w-24 h-24 mx-auto rounded-3xl bg-slate-900/90 border border-emerald-500/30 p-2.5 shadow-2xl shadow-emerald-950/60 flex items-center justify-center">
+            <img
+              src="/assets/aistudio/transparent-logo_f17eb575.svg"
+              alt="Prottasha Housing Society Official Emblem"
+              className="w-full h-full object-contain filter drop-shadow"
+            />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-            Prottasha Housing Society
-          </h1>
-          <p className="text-xs text-slate-400">
-            Official Finance & Accounts Command Portal • 144 Shares Capital Registry
-          </p>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+              Prottasha Housing Society
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Official Finance & Accounts Command Portal • 144 Shares Capital Registry
+            </p>
+          </div>
         </div>
 
         {/* Login Box */}

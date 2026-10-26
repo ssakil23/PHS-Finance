@@ -245,8 +245,12 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Top Banner / Status Strip */}
       <div className="bg-slate-950/80 px-4 py-1.5 border-b border-slate-800/60 text-xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-slate-400">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="font-medium text-slate-200">Prottasha Housing Society Ltd.</span>
+          <img
+            src="/assets/aistudio/transparent-logo_f17eb575.svg"
+            alt="Prottasha Housing Society Logo"
+            className="w-4 h-4 object-contain filter drop-shadow"
+          />
+          <span className="font-semibold text-slate-200">Prottasha Housing Society Ltd.</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -319,13 +323,22 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   {/* Top Bar of Dropdown */}
                   <div className="p-3 bg-slate-950/90 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-emerald-600/30 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-                        <Building2 className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700/80 p-0.5 flex items-center justify-center shrink-0 shadow-sm">
+                        <img
+                          src="/assets/aistudio/transparent-logo_f17eb575.svg"
+                          alt="PHS Logo"
+                          className="w-full h-full object-contain filter drop-shadow"
+                        />
                       </div>
-                      <span className="text-xs font-bold text-white tracking-wide">
-                        Society System Modules
-                      </span>
+                      <div>
+                        <span className="text-xs font-bold text-white tracking-wide block leading-tight">
+                          Prottasha Housing Society
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Financial & Shareholder Ledger
+                        </span>
+                      </div>
                     </div>
                     <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/40">
                       Auto-folding
@@ -395,8 +408,34 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
+            {/* Society Brand Logo & Title */}
+            <button
+              type="button"
+              onClick={() => handleSelectTab('dashboard')}
+              title="Return to Financial Dashboard"
+              className="flex items-center gap-2.5 hover:opacity-90 transition text-left cursor-pointer group py-1"
+            >
+              <div className="w-9 h-9 rounded-xl bg-slate-950/90 border border-slate-700/80 group-hover:border-emerald-500/50 p-1 flex items-center justify-center shadow-md transition shrink-0">
+                <img
+                  src="/assets/aistudio/transparent-logo_f17eb575.svg"
+                  alt="Prottasha Housing Society Logo"
+                  className="w-full h-full object-contain filter drop-shadow"
+                />
+              </div>
+              <div className="hidden sm:block">
+                <div className="text-xs font-black tracking-tight text-white flex items-center gap-1.5 leading-none">
+                  <span className="bg-gradient-to-r from-emerald-300 via-teal-200 to-amber-200 bg-clip-text text-transparent">
+                    PHS-Finance
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-medium truncate max-w-[140px] md:max-w-none mt-0.5">
+                  Prottasha Housing Society Ltd.
+                </div>
+              </div>
+            </button>
+
             {/* Active Module Indicator */}
-            <div className="hidden md:flex items-center gap-2 text-xs">
+            <div className="hidden lg:flex items-center gap-2 text-xs">
               <span className="text-slate-500">Active:</span>
               <span className="font-semibold text-emerald-300 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/40 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>

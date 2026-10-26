@@ -107,19 +107,28 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-emerald-500/5 -skew-x-12 pointer-events-none" />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60">
-                Central Financial Command
-              </span>
-              <span className="text-xs text-slate-400 font-mono">144 Shares Capital Registry</span>
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-slate-950/80 p-1.5 border border-slate-700/80 shadow-md shrink-0 flex items-center justify-center">
+              <img
+                src="/assets/aistudio/transparent-logo_f17eb575.svg"
+                alt="Prottasha Housing Society"
+                className="w-full h-full object-contain filter drop-shadow"
+              />
             </div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Prottasha Housing Society - Financial Overview
-            </h2>
-            <p className="text-sm text-slate-300 mt-1">
-              Welcome back, <strong className="text-emerald-400">{currentUser?.name}</strong>. Real-time balance calculations, Director share obligations, and central escrow audit.
-            </p>
+            <div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60">
+                  Central Financial Command
+                </span>
+                <span className="text-xs text-slate-400 font-mono">144 Shares Capital Registry</span>
+              </div>
+              <h2 className="text-2xl font-bold text-white tracking-tight">
+                Prottasha Housing Society - Financial Overview
+              </h2>
+              <p className="text-sm text-slate-300 mt-1">
+                Welcome back, <strong className="text-emerald-400">{currentUser?.name}</strong>. Real-time balance calculations, Director share obligations, and central escrow audit.
+              </p>
+            </div>
           </div>
 
           {/* Central Society Status Indicators */}
